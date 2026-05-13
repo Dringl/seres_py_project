@@ -1,0 +1,10 @@
+org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+org.gradle.workers.max=1
+android.useAndroidX=true
+android.nonTransitiveRClass=true
+android.suppressUnsupportedCompileSdk=35
+kotlin.code.style=official
+
+# Fill these locally in gradle.properties. Do not commit real keys.
+TDT_TOKEN=
+GAODE_WEB_KEY=

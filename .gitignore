@@ -1,0 +1,25 @@
+﻿*.iml
+.gradle
+/local.properties
+/gradle.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+app/build
+
+# Local assistant / debug artifacts
+/.claude/
+/.tmp*/
+/.tmp_navi.jar
+/java_pid*.hprof
+/*.png
+/cc-ui.xml
+/*window*.xml
+/phone-*.xml
+
+# Local Gradle distribution cache
+/gradle/wrapper/gradle-*.zip
