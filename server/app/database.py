@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
@@ -15,7 +16,11 @@ def make_engine(db_path: str) -> Engine:
         url = db_path
     else:
         url = f"sqlite:///{db_path}"
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    kwargs: dict = {"connect_args": {"check_same_thread": False}}
+    if url == "sqlite://":
+        # 共享同一连接以保证内存库在多线程（如 TestClient）下可见
+        kwargs["poolclass"] = StaticPool
+    engine = create_engine(url, **kwargs)
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_conn, _rec):  # noqa: ANN001
