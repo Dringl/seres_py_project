@@ -122,10 +122,11 @@ orders(
   updated_at           INTEGER
 )
 
-admin_users(            -- 可选；若只用单管理员，则从 .env 读取，不建表
+admin_users(            -- 启用：管理员账号表
   username       TEXT PK,
-  password_hash  TEXT
-)
+  password_hash  TEXT,    -- bcrypt
+  created_at     INTEGER
+)                         -- 首次启动按 .env 的 ADMIN_USERNAME/ADMIN_PASSWORD 播种初始管理员
 ```
 
 约定：
@@ -176,12 +177,14 @@ GET  /vehicles                   → [EvtolDto]          （全量机队，Web/�
 - `GeoPointDto{latitude, longitude}`
 - `VertiportDto{id, name, location:GeoPointDto}`
 - `EvtolDto{id, name, location, batteryPercent, online, status}`
-- `PriceEstimateDto{amountCents, distanceKm, currency}`
+- `PriceEstimateDto{amountCents, distanceKm, currency, cancellationFeeCents}`
 - `OrderDto{id, vehicleId, status, price:PriceEstimateDto, createdAt, updatedAt,
-   pickup:GeoPointDto, destination:VertiportDto}`
+   pickup:GeoPointDto, pickupVertiport:VertiportDto, vehicleOrigin:GeoPointDto,
+   destination:VertiportDto}`
 
-> 注：`OrderDto` 当前未携带 `pickupVertiport` / `cancellationFee`。是否补充见
-> §14 待定项；默认先保持现状以最小化 Android 改动。
+> 已确认补全 `OrderDto`：新增 `pickupVertiport`、`vehicleOrigin`，并在 `price` 内补
+> `cancellationFeeCents`，使 DTO 成为领域 `Order` 的完整镜像，远程映射无缺口。
+> Android 侧同步更新 `OrderDto` / `PriceEstimateDto` 及 DTO→domain 映射。
 
 ### 6.4 错误码
 - 无可用车 → 409（Android 映射为 `NoAvailableVehicleException`）
@@ -245,15 +248,17 @@ BOARDING} 且距某坪 < 80m）即视为"在坪"。引擎在停靠/起飞时维�
 - 进行中机队轮询从 **160ms 降到 ~1s**（`MainViewModel.updateVehiclePollingByOrderState`
   的 `delay(160)`），并在 UI 层对飞行器位置做**两点间插值**保持平滑，弥补服务端
   ~1s 采样间隔。
-- `getOrderHistory()` 改读 `GET /orders`；Room 降级为可选离线缓存。
+- `getOrderHistory()` 在线时读 `GET /orders`（服务端共享）；**保留本地 Room** 作为
+  离线缓存：每次成功拉取后写回 Room，无网络时回退读 Room。
 - `BASE_URL` 配置化：在 `app/build.gradle.kts` 从 `gradle.properties` 读
   `SERVER_BASE_URL`，构建期注入 `BuildConfig.BASE_URL`，指向云服务器域名。
 - 公网上线后收紧 `network_security_config.xml`（仅允许你的域名，或强制 TLS）。
 
 ## 10. 鉴权与安全（仅管理端）
 
-- 管理 Web：账号 + 密码登录，签发令牌（HttpOnly Cookie Session 或 Bearer）；
-  所有 `/admin/*` 校验；密码用 bcrypt（passlib）哈希存储。
+- 管理 Web：账号 + 密码登录，凭据校验 `admin_users` 表（bcrypt/passlib 哈希），
+  签发令牌（HttpOnly Cookie Session 或 Bearer）；所有 `/admin/*` 校验。
+  首次启动按 `.env` 的 `ADMIN_USERNAME/ADMIN_PASSWORD` 播种初始管理员。
 - app 接口开放；可选带固定 `X-App-Key` 头做弱校验防脚本乱刷（写入 BuildConfig）。
 - 公网建议 HTTPS：Caddy 自动签发证书；Uvicorn 仅绑 `127.0.0.1`。
 - 环境变量：`ADMIN_USERNAME / ADMIN_PASSWORD / APP_API_KEY / SECRET_KEY / DB_PATH`。
@@ -285,13 +290,14 @@ BOARDING} 且距某坪 < 80m）即视为"在坪"。引擎在停靠/起飞时维�
 5. **Android 切换**：RemoteRepository、新增接口、配置化 BASE_URL、轮询降频+插值
 6. **Docker + Caddy/HTTPS + 部署文档**
 
-## 14. 待定项（不阻塞实现，实现时确认默认值）
+## 14. 已确认决策（原待定项，已拍板）
 
-- 地图库：高德 JS（默认，已有 web key）vs Leaflet+OSM（零密钥）。
-- 订单历史：是否保留本地 Room 作为离线缓存（默认保留）。
-- `OrderDto` 是否补 `pickupVertiport` / `cancellationFee` 字段（默认不补，最小改动）。
-- 管理台形态：多页 Jinja2（默认）vs 单页应用。
-- 是否启用 `admin_users` 表（默认单管理员走 .env）。
+- 地图库：**高德 JS API**（app 与 Web 一致，复用已有 `GAODE_WEB_KEY`）。
+- 订单历史：**保留本地 Room** 作为离线缓存，在线以服务端 `GET /orders` 为准（见 §9）。
+- `OrderDto`：**补全为领域 `Order` 的完整镜像**——新增 `pickupVertiport`、
+  `vehicleOrigin`，`price` 内补 `cancellationFeeCents`（见 §6.3）。
+- 管理台形态：**多页 Jinja2**。
+- `admin_users` 表：**启用**，首次启动按 `.env` 播种初始管理员（见 §5、§10）。
 
 ## 15. 非目标（YAGNI）
 
