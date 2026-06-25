@@ -4,10 +4,26 @@ from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.geo import haversine_km
-from app.mappers import vehicle_to_dto, vertiport_to_dto
-from app.models import Vehicle, Vertiport
-from app.schemas import EvtolDto, NearbyRequest, OccupancyDto, VertiportDto
-from app.services import vehicles_at_vertiport
+from app.mappers import order_to_dto, vehicle_to_dto, vertiport_to_dto
+from app.models import Order, Vehicle, Vertiport
+from app.schemas import (
+    CreateOrderRequest,
+    EstimateRequest,
+    EvtolDto,
+    NearbyRequest,
+    OccupancyDto,
+    OrderDto,
+    PriceEstimateDto,
+    VertiportDto,
+)
+from app.services import (
+    NoAvailableVehicle,
+    estimate_price,
+    nearest_vehicle_for,
+    new_order_id,
+    now_millis,
+    vehicles_at_vertiport,
+)
 
 router = APIRouter()
 
@@ -43,3 +59,74 @@ def occupancy(vertiport_id: str, session: Session = Depends(get_session)):
         occupied=len(at) > 0,
         vehicles=[vehicle_to_dto(v) for v in at],
     )
+
+
+def _load_order_dto(session: Session, order: Order) -> OrderDto:
+    pickup_vp = session.get(Vertiport, order.pickup_vertiport_id)
+    dest_vp = session.get(Vertiport, order.destination_id)
+    return order_to_dto(order, pickup_vp, dest_vp)
+
+
+@router.post("/price/estimate", response_model=PriceEstimateDto)
+def price_estimate(req: EstimateRequest, session: Session = Depends(get_session)):
+    dest = session.get(Vertiport, req.destinationVertiportId)
+    if dest is None:
+        raise HTTPException(status_code=404, detail="destination not found")
+    distance = haversine_km(req.pickup.latitude, req.pickup.longitude, dest.latitude, dest.longitude)
+    amount, dist = estimate_price(distance)
+    return PriceEstimateDto(amountCents=amount, distanceKm=dist, currency="CNY", cancellationFeeCents=0)
+
+
+@router.post("/orders", response_model=OrderDto)
+def create_order(req: CreateOrderRequest, session: Session = Depends(get_session)):
+    pickup_vp = session.get(Vertiport, req.pickupVertiportId)
+    dest_vp = session.get(Vertiport, req.destinationVertiportId)
+    if pickup_vp is None or dest_vp is None:
+        raise HTTPException(status_code=404, detail="vertiport not found")
+    vehicle = nearest_vehicle_for(session, pickup_vp.latitude, pickup_vp.longitude)
+    if vehicle is None:
+        raise HTTPException(status_code=409, detail="no available vehicle")
+
+    distance = haversine_km(pickup_vp.latitude, pickup_vp.longitude, dest_vp.latitude, dest_vp.longitude)
+    amount, dist = estimate_price(distance)
+    now = now_millis()
+
+    vehicle.status = "RESERVED"
+    vehicle.current_vertiport_id = None
+    vehicle.updated_at = now
+
+    order = Order(
+        id=new_order_id(),
+        pickup_lat=req.pickup.latitude,
+        pickup_lng=req.pickup.longitude,
+        pickup_vertiport_id=pickup_vp.id,
+        vehicle_origin_lat=vehicle.latitude,
+        vehicle_origin_lng=vehicle.longitude,
+        destination_id=dest_vp.id,
+        vehicle_id=vehicle.id,
+        status="RESERVED",
+        amount_cents=amount,
+        distance_km=dist,
+        currency="CNY",
+        cancellation_fee_cents=0,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(order)
+    session.commit()
+    session.refresh(order)
+    return _load_order_dto(session, order)
+
+
+@router.get("/orders", response_model=list[OrderDto])
+def list_orders(session: Session = Depends(get_session)):
+    rows = session.execute(select(Order).order_by(Order.created_at.desc())).scalars().all()
+    return [_load_order_dto(session, o) for o in rows]
+
+
+@router.get("/orders/{order_id}", response_model=OrderDto)
+def get_order(order_id: str, session: Session = Depends(get_session)):
+    order = session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    return _load_order_dto(session, order)
