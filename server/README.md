@@ -45,7 +45,7 @@ cd server
 python -m pytest -v
 ```
 
-预期 **35 个用例全部通过**，覆盖：geo 计算、DTO 契约、业务服务、各接口端到端、
+预期 **36 个用例全部通过**，覆盖：geo 计算、DTO 契约、业务服务、各接口端到端、
 模拟引擎单步与循环。
 
 测试通过环境变量 `EVTOL_TESTING=1` 关闭 lifespan 的后台引擎循环，改由测试用例
@@ -94,7 +94,7 @@ docker run -p 8000:8000 -v evtol-data:/data evtol-server
 | `APP_API_KEY`    | 空                   | App 端访问密钥（预留，计划二接入鉴权后启用；当前为空即不校验）。 |
 | `ADMIN_USERNAME` | `admin`              | 管理台用户名（预留给计划二的 Web 管理台登录）。               |
 | `ADMIN_PASSWORD` | `change-me-please`   | 管理台密码（预留给计划二；**上线务必修改**）。               |
-| `SECRET_KEY`     | `dev-secret`         | 会话/令牌签名密钥（预留给计划二；**上线务必替换为随机值**）。 |
+| `SECRET_KEY`     | `dev-secret`         | 会话/令牌签名密钥（预留给计划二）。代码缺省回退为 `dev-secret`，但 `.env.example` 出厂值为 `replace-with-random-hex`，**上线务必替换为随机值**。 |
 
 > compose 通过 `${VAR:-default}` 读取宿主环境变量并带默认值，因此可用宿主 shell
 > 环境或 `.env`（compose 默认读取当前目录 `.env`）覆盖这些值。
@@ -119,6 +119,16 @@ App 端接口（与设计文档 §6 一致，均无前缀）：
 
 请求/响应字段定义见 `app/schemas.py`（与 Android DTO 对齐，含
 `pickupVertiport` / `vehicleOrigin` / `cancellationFeeCents` 等）。
+
+## 8. 已知限制 / 后续
+
+以下为本期有意保留、留待后续处理的事项（当前代码未改动）：
+
+- **引擎 `tick` 同步阻塞事件循环**：模拟引擎 `tick` 当前在事件循环上同步执行，
+  对小规模演示机队没有问题；但在扩容或迁移到 PostgreSQL 之前，应将其卸载到独立
+  线程（如 `run_in_threadpool`），避免阻塞请求处理。
+- **`POST /vehicles/nearby` 忽略 `radiusKm`**：该接口目前忽略请求中的 `radiusKm`，
+  始终返回最近的 3 架飞行器（与原 App 行为保持一致），后续如需半径过滤再行扩展。
 
 > 后续计划：Web 管理台、`/admin/*` 鉴权守卫与公网 HTTPS 部署（计划二）；
 > Android 客户端接入与离线缓存（计划三）。

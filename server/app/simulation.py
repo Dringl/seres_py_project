@@ -6,7 +6,6 @@ from app.models import Order, Vehicle, Vertiport
 from app.services import now_millis
 
 SPEEDS = {"RESERVED": 95.0, "IN_FLIGHT": 180.0, "RETURNING": 110.0}
-ARRIVE_KM = 0.08
 ACTIVE = {"RESERVED", "BOARDING", "IN_FLIGHT", "RETURNING"}
 LEG_BATTERY_DROP = {"RESERVED": 4, "IN_FLIGHT": 12, "RETURNING": 5}
 

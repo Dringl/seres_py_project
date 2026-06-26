@@ -17,7 +17,6 @@ from app.schemas import (
     VertiportDto,
 )
 from app.services import (
-    NoAvailableVehicle,
     estimate_price,
     nearest_vehicle_for,
     new_order_id,
@@ -148,6 +147,7 @@ def board(order_id: str, session: Session = Depends(get_session)):
     order.updated_at = now
     if vehicle is not None:
         vehicle.status = "IN_FLIGHT"
+        vehicle.current_vertiport_id = None
         vehicle.updated_at = now
     session.commit()
     session.refresh(order)
@@ -164,10 +164,10 @@ def cancel(order_id: str, session: Session = Depends(get_session)):
     vehicle = session.get(Vehicle, order.vehicle_id)
     now = now_millis()
 
+    pickup_vp = session.get(Vertiport, order.pickup_vertiport_id)
     pickup_route_km = haversine_km(
         order.vehicle_origin_lat, order.vehicle_origin_lng,
-        *(session.get(Vertiport, order.pickup_vertiport_id).latitude,
-          session.get(Vertiport, order.pickup_vertiport_id).longitude),
+        pickup_vp.latitude, pickup_vp.longitude,
     )
     traveled_km = 0.0
     if vehicle is not None:
@@ -185,6 +185,7 @@ def cancel(order_id: str, session: Session = Depends(get_session)):
     order.updated_at = now
     if vehicle is not None:
         vehicle.status = "RESERVED"
+        vehicle.current_vertiport_id = None
         vehicle.updated_at = now
     session.commit()
     session.refresh(order)
