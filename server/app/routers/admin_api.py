@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends
+import random
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -6,7 +9,7 @@ from app.database import get_session
 from app.mappers import order_to_dto
 from app.models import Order, Vehicle, Vertiport
 from app.routers.admin_auth import require_admin
-from app.services import vehicles_at_vertiport
+from app.services import now_millis, vehicles_at_vertiport
 
 router = APIRouter(prefix="/admin/api", dependencies=[Depends(require_admin)])
 
@@ -94,3 +97,86 @@ def list_vertiports(session: Session = Depends(get_session)) -> list[dict]:
 def list_orders(session: Session = Depends(get_session)) -> list[dict]:
     rows = session.execute(select(Order).order_by(Order.created_at.desc())).scalars().all()
     return [order_admin_dict(session, o) for o in rows]
+
+
+class VehicleCreate(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
+    batteryPercent: int = 100
+    status: str = "IDLE"
+    currentVertiportId: str | None = None
+    id: str | None = None
+
+
+class VehicleUpdate(BaseModel):
+    name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    batteryPercent: int | None = None
+    online: bool | None = None
+    status: str | None = None
+    currentVertiportId: str | None = None
+
+
+def _gen_vehicle_id(session: Session) -> str:
+    while True:
+        cand = f"ev{random.randint(100, 999)}"
+        if session.get(Vehicle, cand) is None:
+            return cand
+
+
+@router.post("/vehicles", status_code=201)
+def create_vehicle(body: VehicleCreate, session: Session = Depends(get_session)) -> dict:
+    vid = body.id or _gen_vehicle_id(session)
+    if session.get(Vehicle, vid) is not None:
+        raise HTTPException(status_code=409, detail="vehicle id exists")
+    v = Vehicle(
+        id=vid,
+        name=body.name,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        battery_percent=body.batteryPercent,
+        online=True,
+        status=body.status,
+        current_vertiport_id=body.currentVertiportId,
+        updated_at=now_millis(),
+    )
+    session.add(v)
+    session.commit()
+    session.refresh(v)
+    return vehicle_admin_dict(v)
+
+
+@router.put("/vehicles/{vehicle_id}")
+def update_vehicle(vehicle_id: str, body: VehicleUpdate, session: Session = Depends(get_session)) -> dict:
+    v = session.get(Vehicle, vehicle_id)
+    if v is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    if body.name is not None:
+        v.name = body.name
+    if body.latitude is not None:
+        v.latitude = body.latitude
+    if body.longitude is not None:
+        v.longitude = body.longitude
+    if body.batteryPercent is not None:
+        v.battery_percent = body.batteryPercent
+    if body.online is not None:
+        v.online = body.online
+    if body.status is not None:
+        v.status = body.status
+    if body.currentVertiportId is not None:
+        v.current_vertiport_id = body.currentVertiportId or None
+    v.updated_at = now_millis()
+    session.commit()
+    session.refresh(v)
+    return vehicle_admin_dict(v)
+
+
+@router.delete("/vehicles/{vehicle_id}", status_code=204)
+def delete_vehicle(vehicle_id: str, session: Session = Depends(get_session)) -> None:
+    v = session.get(Vehicle, vehicle_id)
+    if v is None:
+        raise HTTPException(status_code=404, detail="vehicle not found")
+    session.delete(v)
+    session.commit()
