@@ -130,3 +130,62 @@ def get_order(order_id: str, session: Session = Depends(get_session)):
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
     return _load_order_dto(session, order)
+
+
+CANCELABLE = {"CREATED", "ASSIGNED", "RESERVED", "BOARDING"}
+
+
+@router.post("/orders/{order_id}/board", response_model=OrderDto)
+def board(order_id: str, session: Session = Depends(get_session)):
+    order = session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status != "BOARDING":
+        raise HTTPException(status_code=409, detail="order not in BOARDING")
+    vehicle = session.get(Vehicle, order.vehicle_id)
+    now = now_millis()
+    order.status = "IN_FLIGHT"
+    order.updated_at = now
+    if vehicle is not None:
+        vehicle.status = "IN_FLIGHT"
+        vehicle.updated_at = now
+    session.commit()
+    session.refresh(order)
+    return _load_order_dto(session, order)
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderDto)
+def cancel(order_id: str, session: Session = Depends(get_session)):
+    order = session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status not in CANCELABLE:
+        raise HTTPException(status_code=409, detail="order not cancelable")
+    vehicle = session.get(Vehicle, order.vehicle_id)
+    now = now_millis()
+
+    pickup_route_km = haversine_km(
+        order.vehicle_origin_lat, order.vehicle_origin_lng,
+        *(session.get(Vertiport, order.pickup_vertiport_id).latitude,
+          session.get(Vertiport, order.pickup_vertiport_id).longitude),
+    )
+    traveled_km = 0.0
+    if vehicle is not None:
+        traveled_km = min(
+            haversine_km(order.vehicle_origin_lat, order.vehicle_origin_lng,
+                         vehicle.latitude, vehicle.longitude),
+            pickup_route_km,
+        )
+    progress = (traveled_km / pickup_route_km) if pickup_route_km > 0 else 0.0
+    fee = int(1200 + order.amount_cents * 0.45 * min(max(progress, 0.0), 1.0))
+    fee = max(fee, 1200)
+
+    order.status = "RETURNING"
+    order.cancellation_fee_cents = fee
+    order.updated_at = now
+    if vehicle is not None:
+        vehicle.status = "RESERVED"
+        vehicle.updated_at = now
+    session.commit()
+    session.refresh(order)
+    return _load_order_dto(session, order)
