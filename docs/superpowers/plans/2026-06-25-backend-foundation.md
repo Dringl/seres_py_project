@@ -265,7 +265,7 @@ git commit -m "feat(server): 经纬度距离与移动插值工具"
 
 **Interfaces:**
 - Produces：`app.database.Base`（DeclarativeBase）、`app.database.make_engine(db_path)`、
-  `app.database.SessionLocal`（可重绑定的 sessionmaker）、`app.database.init_db(engine)`、
+  `app.database.SessionLocal`（可重绑定的 sessionmaker）、`app.database.init_app_engine(db_path)`、
   `app.database.get_session()`（FastAPI 依赖，yield Session）。
 - Produces ORM：`Vertiport(id,name,latitude,longitude)`、
   `Vehicle(id,name,latitude,longitude,battery_percent,online,status,current_vertiport_id,updated_at)`、
