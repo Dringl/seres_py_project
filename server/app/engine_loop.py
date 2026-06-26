@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,13 +9,18 @@ from app.database import init_app_engine, session_scope
 from app.seed import seed_if_empty
 from app.simulation import tick
 
+logger = logging.getLogger(__name__)
+
 ENGINE_INTERVAL_SECONDS = 1.0
 
 
 async def run_engine(stop_event: asyncio.Event, interval: float = ENGINE_INTERVAL_SECONDS) -> None:
     while not stop_event.is_set():
-        with session_scope() as session:
-            tick(session, dt_seconds=interval)
+        try:
+            with session_scope() as session:
+                tick(session, dt_seconds=interval)
+        except Exception:
+            logger.exception("engine tick failed; continuing")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval)
         except asyncio.TimeoutError:
