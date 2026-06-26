@@ -1,0 +1,9 @@
+# 部署相关文件强制 LF 行尾，避免从 Windows 检出/拷贝到 Linux 时
+# /etc/evtol.env、systemd 单元、nginx 片段因 CRLF 出现 \r 导致的诡异故障。
+deploy/*.service text eol=lf
+deploy/*.conf    text eol=lf
+deploy/*.env     text eol=lf
+deploy/*.example text eol=lf
+deploy/*.md      text eol=lf
+*.py             text eol=lf
+*.sh             text eol=lf
