@@ -8,16 +8,12 @@ from app.services import now_millis
 SPEEDS = {"RESERVED": 95.0, "IN_FLIGHT": 180.0, "RETURNING": 110.0}
 ARRIVE_KM = 0.08
 ACTIVE = {"RESERVED", "BOARDING", "IN_FLIGHT", "RETURNING"}
+LEG_BATTERY_DROP = {"RESERVED": 4, "IN_FLIGHT": 12, "RETURNING": 5}
 
 
 def _nearest_vertiport(session: Session, lat: float, lng: float) -> Vertiport:
     ports = session.execute(select(Vertiport)).scalars().all()
     return min(ports, key=lambda p: haversine_km(lat, lng, p.latitude, p.longitude))
-
-
-def _drain(vehicle: Vehicle, km: float) -> None:
-    drop = int(km * 0.3)
-    vehicle.battery_percent = max(vehicle.battery_percent - drop, 10)
 
 
 def tick(session: Session, dt_seconds: float = 1.0) -> None:
@@ -45,12 +41,10 @@ def tick(session: Session, dt_seconds: float = 1.0) -> None:
         else:  # RETURNING
             target = _nearest_vertiport(session, vehicle.latitude, vehicle.longitude)
 
-        prev = (vehicle.latitude, vehicle.longitude)
         new_lat, new_lng, arrived = step_toward(
             vehicle.latitude, vehicle.longitude, target.latitude, target.longitude, max_km
         )
         vehicle.latitude, vehicle.longitude = new_lat, new_lng
-        _drain(vehicle, haversine_km(prev[0], prev[1], new_lat, new_lng))
         vehicle.updated_at = now
         order.updated_at = now
 
@@ -58,14 +52,23 @@ def tick(session: Session, dt_seconds: float = 1.0) -> None:
             continue
 
         if order.status == "RESERVED":
+            vehicle.battery_percent = max(
+                vehicle.battery_percent - LEG_BATTERY_DROP["RESERVED"], 10
+            )
             order.status = "BOARDING"
             vehicle.status = "BOARDING"
             vehicle.current_vertiport_id = target.id
         elif order.status == "IN_FLIGHT":
+            vehicle.battery_percent = max(
+                vehicle.battery_percent - LEG_BATTERY_DROP["IN_FLIGHT"], 10
+            )
             order.status = "DONE"
             vehicle.status = "IDLE"
             vehicle.current_vertiport_id = target.id
         elif order.status == "RETURNING":
+            vehicle.battery_percent = max(
+                vehicle.battery_percent - LEG_BATTERY_DROP["RETURNING"], 10
+            )
             order.status = "CANCELED"
             vehicle.status = "IDLE"
             vehicle.current_vertiport_id = target.id

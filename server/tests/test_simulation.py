@@ -72,3 +72,28 @@ def test_in_flight_arrival_completes_and_parks():
     assert order.status == "DONE"
     assert v.status == "IDLE"
     assert v.current_vertiport_id == "vp006"
+
+
+def test_in_flight_arrival_drains_battery():
+    s = _seeded()
+    v = s.get(Vehicle, "ev003")  # 种子电量 81，在 vp006，目的也 vp006 → 一拍到达
+    v.status = "IN_FLIGHT"
+    v.current_vertiport_id = None
+    s.commit()
+    _order_in_status(s, "IN_FLIGHT", "ev003", pickup="vp001", dest="vp006")
+    tick(s, dt_seconds=1.0)
+    s.refresh(v)
+    assert v.battery_percent == 81 - 12  # 航段扣电 12，得 69
+
+
+def test_battery_drain_has_floor_of_10():
+    s = _seeded()
+    v = s.get(Vehicle, "ev003")  # 一拍到达的航段
+    v.status = "IN_FLIGHT"
+    v.current_vertiport_id = None
+    v.battery_percent = 10  # 已在地板，扣电后不应为负
+    s.commit()
+    _order_in_status(s, "IN_FLIGHT", "ev003", pickup="vp001", dest="vp006")
+    tick(s, dt_seconds=1.0)
+    s.refresh(v)
+    assert v.battery_percent >= 10
