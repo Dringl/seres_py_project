@@ -122,3 +122,23 @@ sudo systemctl status evtol
 - 本手册部署的是**计划一**的后端（app 端 API + 占用 + 调度引擎）。
 - 计划二的 **Web 管理台与管理员鉴权尚未实现**；实现后将挂在同一前缀下的 `/evtol/admin`，
   无需再改 Nginx/systemd（管理台路由用 root_path 感知的 URL 生成）。
+
+## 11. 本次实际部署记录（bq-star.com · 2026-06-26）
+
+已实际部署并通过公网验证。真实取值：
+
+- 服务器：香港 Ubuntu 24.04.4，Python 3.12.3，登录用户 `dxd`（sudo 免密）。
+- 域名：**bq-star.com**（Cloudflare 代理 + Let's Encrypt 源站证书，HSTS）。
+- 代码目录：`/data/work/web/evtol`（属主 dxd，与农机通同级）；venv：`/data/work/web/evtol/venv`。
+- 服务：`/etc/systemd/system/evtol.service`（User=www-data, UMask=0077, `--root-path /evtol`, 单 worker），监听 `127.0.0.1:8000`。
+- 环境：`/etc/evtol.env`（root:www-data 640，含随机 SECRET_KEY 与 ADMIN_PASSWORD —— 用 `sudo cat /etc/evtol.env` 查看）。
+- 数据库：`/var/lib/evtol/evtol.sqlite`（systemd StateDirectory，www-data 0600）。
+- Nginx：片段 `/etc/nginx/snippets/evtol-locations.conf`，在 `sites-available/bq-star.conf` 的 `server_name bq-star.com` 443 块里 `include`（农机通 include 之后一行）；改前已备份 `bq-star.conf.<ts>.bak`。
+- 对外地址：**https://bq-star.com/evtol/**（如 `/evtol/vertiports`、`/evtol/vertiports/{id}/occupancy`、`/evtol/docs`）。
+- 验证：源站直连、经 Cloudflare、外网本机三处均通过；农机通 `/admin/`、公司站 `/` 回归正常。
+
+更新发布：`tar` 覆盖 `/data/work/web/evtol` → `./venv/bin/pip install -r requirements.txt` → `sudo systemctl restart evtol`。
+回滚 Nginx：删除 bq-star.conf 中的 evtol include 行（或还原 .bak）→ `sudo nginx -t && sudo systemctl reload nginx`。
+
+> 安全提醒：本次通过临时 askpass 使用了私钥 passphrase，会话结束已删除本地临时文件；
+> 该 passphrase 仍建议你后续轮换一次。

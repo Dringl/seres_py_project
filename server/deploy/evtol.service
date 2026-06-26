@@ -6,12 +6,13 @@ After=network.target
 Type=simple
 User=www-data
 Group=www-data
-# 代码部署目录：把仓库的 server/ 放到这里（见 DEPLOY.md）
-WorkingDirectory=/opt/evtol/server
+UMask=0077
+# 代码部署目录（实际部署：与农机通同级，属主 dxd，www-data 可读执行）
+WorkingDirectory=/data/work/web/evtol
 # 端口/数据库路径/管理员凭据等都在这个文件里
 EnvironmentFile=/etc/evtol.env
 # 单 worker（SQLite + 进程内调度引擎的硬性约束）；--root-path 让 FastAPI 感知 /evtol 反代前缀
-ExecStart=/opt/evtol/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --root-path /evtol
+ExecStart=/data/work/web/evtol/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --root-path /evtol
 Restart=always
 RestartSec=3
 # systemd 自动创建 /var/lib/evtol 并归属 www-data，作为 SQLite 数据目录
