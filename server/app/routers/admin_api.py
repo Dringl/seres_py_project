@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_session
+from app.geo import haversine_km
 from app.mappers import order_to_dto
 from app.models import Order, Vehicle, Vertiport
 from app.routers.admin_auth import require_admin
@@ -232,3 +233,47 @@ def delete_vertiport(vertiport_id: str, session: Session = Depends(get_session))
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=409, detail="vertiport is referenced by vehicles or orders")
+
+
+ORDER_STATUSES = {
+    "CREATED", "ASSIGNED", "RESERVED", "BOARDING",
+    "IN_FLIGHT", "RETURNING", "DONE", "CANCELED", "FAILED",
+}
+
+
+class StatusBody(BaseModel):
+    status: str
+
+
+@router.post("/orders/{order_id}/cancel")
+def force_cancel(order_id: str, session: Session = Depends(get_session)) -> dict:
+    order = session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    now = now_millis()
+    order.status = "CANCELED"
+    order.updated_at = now
+    vehicle = session.get(Vehicle, order.vehicle_id)
+    if vehicle is not None:
+        ports = session.execute(select(Vertiport)).scalars().all()
+        nearest = min(ports, key=lambda p: haversine_km(vehicle.latitude, vehicle.longitude, p.latitude, p.longitude))
+        vehicle.status = "IDLE"
+        vehicle.latitude = nearest.latitude
+        vehicle.longitude = nearest.longitude
+        vehicle.current_vertiport_id = nearest.id
+        vehicle.updated_at = now
+    session.commit()
+    return order_admin_dict(session, order)
+
+
+@router.post("/orders/{order_id}/status")
+def force_status(order_id: str, body: StatusBody, session: Session = Depends(get_session)) -> dict:
+    if body.status not in ORDER_STATUSES:
+        raise HTTPException(status_code=422, detail="invalid status")
+    order = session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    order.status = body.status
+    order.updated_at = now_millis()
+    session.commit()
+    return order_admin_dict(session, order)
