@@ -120,8 +120,10 @@ sudo systemctl status evtol
 ## 10. 现状边界
 
 - 本手册部署的是**计划一**的后端（app 端 API + 占用 + 调度引擎）。
-- 计划二的 **Web 管理台与管理员鉴权尚未实现**；实现后将挂在同一前缀下的 `/evtol/admin`，
-  无需再改 Nginx/systemd（管理台路由用 root_path 感知的 URL 生成）。
+- **计划二（Web 管理台 + 鉴权）已于 2026-06-26 部署上线**：`https://bq-star.com/evtol/admin/login`，
+  登录用 `/etc/evtol.env` 的 `ADMIN_USERNAME/ADMIN_PASSWORD`（lifespan 启动自动播种到 admin_users 表）。
+  更新流程见本文件第 7 节（tar 覆盖 → venv pip install → systemctl restart）；本次新增依赖 bcrypt/itsdangerous。
+  会话 Cookie 在生产为 Secure（`https_only`，经 Cloudflare 已验证登录流程）。无需改 Nginx/systemd。
 
 ## 11. 本次实际部署记录（bq-star.com · 2026-06-26）
 
