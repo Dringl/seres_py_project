@@ -25,3 +25,17 @@ def dashboard(request: Request):
     return templates.TemplateResponse(
         request, "dashboard.html", {"admin": current_admin(request), "gaode_key": get_settings().gaode_web_key}
     )
+
+
+@router.get("/admin/vehicles", response_class=HTMLResponse, name="admin_vehicles")
+def vehicles_page(request: Request):
+    if not current_admin(request):
+        return _login_redirect(request)
+    return templates.TemplateResponse(request, "vehicles.html", {"admin": current_admin(request)})
+
+
+@router.get("/admin/vertiports", response_class=HTMLResponse, name="admin_vertiports")
+def vertiports_page(request: Request):
+    if not current_admin(request):
+        return _login_redirect(request)
+    return templates.TemplateResponse(request, "vertiports.html", {"admin": current_admin(request)})
