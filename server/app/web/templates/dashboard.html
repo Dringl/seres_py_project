@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}总览 · eVTOL 管理台{% endblock %}
+{% block body %}
+<div class="topbar">
+  <strong>eVTOL 管理台</strong>
+  <a class="active" href="{{ request.scope.root_path }}/admin">总览</a>
+  <a href="{{ request.scope.root_path }}/admin/vehicles">机队</a>
+  <a href="{{ request.scope.root_path }}/admin/vertiports">停机坪</a>
+  <a href="{{ request.scope.root_path }}/admin/orders">订单</a>
+  <span class="spacer"></span>
+  <span class="l">{{ admin }}</span>
+  <form method="post" action="{{ request.scope.root_path }}/admin/logout" style="margin:0">
+    <button class="btn" type="submit">登出</button>
+  </form>
+</div>
+<div class="wrap">
+  <div id="overview-cards" class="cards"></div>
+  <div id="map"></div>
+  <h3>停机坪占用</h3>
+  <div id="occupancy-panel"></div>
+  <h3>机队</h3>
+  <table id="fleet-table"><thead><tr><th>ID</th><th>名称</th><th>状态</th><th>电量</th><th>停靠坪</th></tr></thead><tbody></tbody></table>
+</div>
+<script>window.GAODE_KEY = "{{ gaode_key }}";</script>
+{% if gaode_key %}<script src="https://webapi.amap.com/maps?v=2.0&key={{ gaode_key }}"></script>{% endif %}
+{% endblock %}
+{% block scripts %}<script src="{{ request.scope.root_path }}/static/dashboard.js"></script>{% endblock %}
