@@ -10,7 +10,7 @@ body { margin:0; font-family: system-ui, "Microsoft YaHei", sans-serif; color:va
 .topbar a { color:var(--muted); text-decoration:none; padding:6px 10px; border-radius:6px; }
 .topbar a.active, .topbar a:hover { color:var(--fg); background:var(--bg); }
 .topbar .spacer { flex:1; }
-.wrap { padding:20px; max-width:1200px; margin:0 auto; }
+.wrap { padding:20px; max-width:1600px; margin:0 auto; }
 .cards { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
 .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 18px; min-width:120px; }
 .card .n { font-size:24px; font-weight:500; }
@@ -21,7 +21,7 @@ th { background:var(--bg); color:var(--muted); font-weight:500; }
 .tag { padding:2px 8px; border-radius:10px; font-size:12px; background:var(--bg); }
 .tag.occupied { background:#e1f5ee; color:var(--accent); }
 .tag.empty { color:var(--muted); }
-#map { height:360px; border:1px solid var(--line); border-radius:10px; margin-bottom:16px; background:#eef; }
+#map { height:calc(100vh - 200px); min-height:520px; border:1px solid var(--line); border-radius:10px; margin-bottom:16px; background:#eef; }
 button.btn { padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; cursor:pointer; font-size:13px; }
 button.btn:hover { background:var(--bg); }
 .row-form input, .row-form select { padding:6px; border:1px solid var(--line); border-radius:6px; margin:2px; }
