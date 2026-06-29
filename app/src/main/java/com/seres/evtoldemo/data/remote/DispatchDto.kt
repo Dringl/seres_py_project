@@ -23,7 +23,8 @@ data class EvtolDto(
 data class PriceEstimateDto(
     val amountCents: Int,
     val distanceKm: Double,
-    val currency: String
+    val currency: String,
+    val cancellationFeeCents: Int = 0
 )
 
 data class NearbyRequestDto(
@@ -39,7 +40,8 @@ data class EstimateRequestDto(
 
 data class CreateOrderRequestDto(
     val pickup: GeoPointDto,
-    val destinationVertiportId: String
+    val destinationVertiportId: String,
+    val pickupVertiportId: String
 )
 
 data class OrderDto(
@@ -50,5 +52,7 @@ data class OrderDto(
     val createdAt: Long,
     val updatedAt: Long,
     val pickup: GeoPointDto,
+    val pickupVertiport: VertiportDto,
+    val vehicleOrigin: GeoPointDto,
     val destination: VertiportDto
 )

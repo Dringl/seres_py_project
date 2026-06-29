@@ -480,7 +480,7 @@ class MainViewModel @Inject constructor(
                 ) {
                     break
                 }
-                delay(160)
+                delay(1000)
             }
         }
     }
