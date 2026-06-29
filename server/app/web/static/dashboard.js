@@ -2,7 +2,7 @@ const BASE = window.BASE || "";
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 const api = (p) => fetch(BASE + "/admin/api" + p, { credentials: "same-origin" }).then((r) => r.json());
 
-let map = null, markers = [];
+let map = null, markers = [], routes = [];
 const vehHeading = {}; // 飞行器航向：id -> {lng, lat, angle}，按上一帧→当前帧计算
 // 罗盘航向角（0=正北，顺时针），与 Android bearingDegrees 一致；高德 JS angle 为 CSS 顺时针
 function bearing(lng1, lat1, lng2, lat2) {
@@ -25,13 +25,40 @@ function initMap() {
     map = new AMap.Map("map", { zoom: 11, center: [106.55, 29.56] });
   }
 }
-function iconMarker(lng, lat, title, html, size, angle) {
-  return new AMap.Marker({ position: [lng, lat], title: title, content: html, offset: new AMap.Pixel(-size / 2, -size / 2), angle: angle || 0 });
+function iconMarker(lng, lat, title, svg, size, angle) {
+  // 旋转用 content 内 CSS transform（高德对自定义 content 标记的 angle 选项不一定生效）
+  const html = '<div style="width:' + size + 'px;height:' + size + 'px;transform:rotate(' + (angle || 0) + 'deg);transform-origin:center center;">' + svg + '</div>';
+  return new AMap.Marker({ position: [lng, lat], title: title, content: html, offset: new AMap.Pixel(-size / 2, -size / 2) });
 }
-function drawMap(vehicles, vertiports) {
+function drawMap(vehicles, vertiports, orders) {
   if (!map || !window.AMap) return;
   markers.forEach((m) => map.remove(m));
-  markers = [];
+  routes.forEach((p) => map.remove(p));
+  markers = []; routes = [];
+  const vehById = {};
+  vehicles.forEach((v) => { vehById[v.id] = v; });
+  // 目标航线：活动订单从飞行器到当前目标停机坪（带方向箭头的虚线）
+  (orders || []).forEach((ord) => {
+    const veh = vehById[ord.vehicleId];
+    let from = null, to = null;
+    if (ord.status === "RESERVED" && veh) {
+      from = [veh.longitude, veh.latitude];
+      to = [ord.pickupVertiport.location.longitude, ord.pickupVertiport.location.latitude];
+    } else if (ord.status === "IN_FLIGHT" && veh) {
+      from = [veh.longitude, veh.latitude];
+      to = [ord.destination.location.longitude, ord.destination.location.latitude];
+    } else if (ord.status === "BOARDING") {
+      from = [ord.pickupVertiport.location.longitude, ord.pickupVertiport.location.latitude];
+      to = [ord.destination.location.longitude, ord.destination.location.latitude];
+    }
+    if (from && to) {
+      const pl = new AMap.Polyline({
+        path: [from, to], strokeColor: "#1D9BFF", strokeWeight: 4,
+        strokeStyle: "dashed", strokeOpacity: 0.85, showDir: true, zIndex: 50
+      });
+      map.add(pl); routes.push(pl);
+    }
+  });
   vertiports.forEach((vp) => {
     const m = iconMarker(vp.longitude, vp.latitude, vp.name, ICON_VERTIPORT, 32, 0);
     map.add(m); markers.push(m);
@@ -72,8 +99,8 @@ function renderOccupancy(vertiports) {
 
 async function refresh() {
   try {
-    const [o, vehicles, vertiports] = await Promise.all([api("/overview"), api("/vehicles"), api("/vertiports")]);
-    renderCards(o); renderFleet(vehicles); renderOccupancy(vertiports); drawMap(vehicles, vertiports);
+    const [o, vehicles, vertiports, orders] = await Promise.all([api("/overview"), api("/vehicles"), api("/vertiports"), api("/orders")]);
+    renderCards(o); renderFleet(vehicles); renderOccupancy(vertiports); drawMap(vehicles, vertiports, orders);
   } catch (e) { /* 网络抖动忽略，下一拍重试 */ }
 }
 
