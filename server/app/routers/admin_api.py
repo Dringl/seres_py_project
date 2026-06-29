@@ -3,6 +3,7 @@ import random
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_session
@@ -180,3 +181,54 @@ def delete_vehicle(vehicle_id: str, session: Session = Depends(get_session)) -> 
         raise HTTPException(status_code=404, detail="vehicle not found")
     session.delete(v)
     session.commit()
+
+
+class VertiportCreate(BaseModel):
+    id: str
+    name: str
+    latitude: float
+    longitude: float
+
+
+class VertiportUpdate(BaseModel):
+    name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+@router.post("/vertiports", status_code=201)
+def create_vertiport(body: VertiportCreate, session: Session = Depends(get_session)) -> dict:
+    if session.get(Vertiport, body.id) is not None:
+        raise HTTPException(status_code=409, detail="vertiport id exists")
+    vp = Vertiport(id=body.id, name=body.name, latitude=body.latitude, longitude=body.longitude)
+    session.add(vp)
+    session.commit()
+    return {"id": vp.id, "name": vp.name, "latitude": vp.latitude, "longitude": vp.longitude}
+
+
+@router.put("/vertiports/{vertiport_id}")
+def update_vertiport(vertiport_id: str, body: VertiportUpdate, session: Session = Depends(get_session)) -> dict:
+    vp = session.get(Vertiport, vertiport_id)
+    if vp is None:
+        raise HTTPException(status_code=404, detail="vertiport not found")
+    if body.name is not None:
+        vp.name = body.name
+    if body.latitude is not None:
+        vp.latitude = body.latitude
+    if body.longitude is not None:
+        vp.longitude = body.longitude
+    session.commit()
+    return {"id": vp.id, "name": vp.name, "latitude": vp.latitude, "longitude": vp.longitude}
+
+
+@router.delete("/vertiports/{vertiport_id}", status_code=204)
+def delete_vertiport(vertiport_id: str, session: Session = Depends(get_session)) -> None:
+    vp = session.get(Vertiport, vertiport_id)
+    if vp is None:
+        raise HTTPException(status_code=404, detail="vertiport not found")
+    try:
+        session.delete(vp)
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="vertiport is referenced by vehicles or orders")
