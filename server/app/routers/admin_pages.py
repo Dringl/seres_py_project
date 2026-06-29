@@ -39,3 +39,10 @@ def vertiports_page(request: Request):
     if not current_admin(request):
         return _login_redirect(request)
     return templates.TemplateResponse(request, "vertiports.html", {"admin": current_admin(request)})
+
+
+@router.get("/admin/orders", response_class=HTMLResponse, name="admin_orders")
+def orders_page(request: Request):
+    if not current_admin(request):
+        return _login_redirect(request)
+    return templates.TemplateResponse(request, "orders.html", {"admin": current_admin(request)})

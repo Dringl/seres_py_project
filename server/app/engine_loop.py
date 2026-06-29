@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.auth import seed_admin_if_empty
 from app.config import get_settings
 from app.database import init_app_engine, session_scope
 from app.seed import seed_if_empty
@@ -33,6 +34,7 @@ async def engine_lifespan(app: FastAPI):
     init_app_engine(settings.db_path)
     with session_scope() as session:
         seed_if_empty(session)
+        seed_admin_if_empty(session, settings.admin_username, settings.admin_password)
     stop_event = asyncio.Event()
     task = asyncio.create_task(run_engine(stop_event))
     try:
