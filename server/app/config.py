@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "change-me-please"
     secret_key: str = "dev-secret"
+    gaode_web_key: str = ""
 
 
 @lru_cache
