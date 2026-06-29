@@ -60,7 +60,7 @@ def overview(session: Session = Depends(get_session)) -> dict:
             "reserved": vstatus.get("reserved", 0),
             "boarding": vstatus.get("boarding", 0),
             "in_flight": vstatus.get("in_flight", 0),
-            "charging": vstatus.get("charging", 0),
+            "maintenance": vstatus.get("maintenance", 0),
             "offline": vstatus.get("offline", 0),
         },
         "orders": {"total": len(orders), "active": active, "done": ostatus.get("done", 0), "canceled": ostatus.get("canceled", 0)},
@@ -239,6 +239,7 @@ ORDER_STATUSES = {
     "CREATED", "ASSIGNED", "RESERVED", "BOARDING",
     "IN_FLIGHT", "RETURNING", "DONE", "CANCELED", "FAILED",
 }
+TERMINAL_STATUSES = {"DONE", "CANCELED", "FAILED"}
 
 
 class StatusBody(BaseModel):
@@ -256,20 +257,21 @@ def force_cancel(order_id: str, session: Session = Depends(get_session)) -> dict
     vehicle = session.get(Vehicle, order.vehicle_id)
     if vehicle is not None:
         ports = session.execute(select(Vertiport)).scalars().all()
-        nearest = min(ports, key=lambda p: haversine_km(vehicle.latitude, vehicle.longitude, p.latitude, p.longitude))
         vehicle.status = "IDLE"
-        vehicle.latitude = nearest.latitude
-        vehicle.longitude = nearest.longitude
-        vehicle.current_vertiport_id = nearest.id
         vehicle.updated_at = now
+        if ports:
+            nearest = min(ports, key=lambda p: haversine_km(vehicle.latitude, vehicle.longitude, p.latitude, p.longitude))
+            vehicle.latitude = nearest.latitude
+            vehicle.longitude = nearest.longitude
+            vehicle.current_vertiport_id = nearest.id
     session.commit()
     return order_admin_dict(session, order)
 
 
 @router.post("/orders/{order_id}/status")
 def force_status(order_id: str, body: StatusBody, session: Session = Depends(get_session)) -> dict:
-    if body.status not in ORDER_STATUSES:
-        raise HTTPException(status_code=422, detail="invalid status")
+    if body.status not in TERMINAL_STATUSES:
+        raise HTTPException(status_code=422, detail="force-status only allows terminal states (DONE/CANCELED/FAILED)")
     order = session.get(Order, order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")

@@ -1,4 +1,5 @@
 const BASE = window.BASE || "";
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 const api = (p) => fetch(BASE + "/admin/api" + p, { credentials: "same-origin" }).then((r) => r.json());
 
 let map = null, markers = [];
@@ -12,11 +13,11 @@ function drawMap(vehicles, vertiports) {
   markers.forEach((m) => map.remove(m));
   markers = [];
   vertiports.forEach((vp) => {
-    const m = new AMap.Marker({ position: [vp.longitude, vp.latitude], title: vp.name, content: '<div style="background:#1d9e75;color:#fff;padding:2px 6px;border-radius:6px;font-size:11px">' + vp.name + (vp.occupied ? " ●" : "") + "</div>" });
+    const m = new AMap.Marker({ position: [vp.longitude, vp.latitude], title: vp.name, content: '<div style="background:#1d9e75;color:#fff;padding:2px 6px;border-radius:6px;font-size:11px">' + esc(vp.name) + (vp.occupied ? " ●" : "") + "</div>" });
     map.add(m); markers.push(m);
   });
   vehicles.forEach((v) => {
-    const m = new AMap.Marker({ position: [v.longitude, v.latitude], title: v.id, content: '<div style="background:#534ab7;color:#fff;padding:2px 6px;border-radius:6px;font-size:11px">' + v.id + " " + v.status + "</div>" });
+    const m = new AMap.Marker({ position: [v.longitude, v.latitude], title: v.id, content: '<div style="background:#534ab7;color:#fff;padding:2px 6px;border-radius:6px;font-size:11px">' + esc(v.id) + " " + esc(v.status) + "</div>" });
     map.add(m); markers.push(m);
   });
 }
@@ -29,15 +30,15 @@ function renderCards(o) {
 }
 function renderFleet(vehicles) {
   document.querySelector("#fleet-table tbody").innerHTML = vehicles.map((v) =>
-    "<tr><td>" + v.id + "</td><td>" + v.name + "</td><td>" + v.status + "</td><td>" + v.batteryPercent + "%</td><td>" + (v.currentVertiportId || "-") + "</td></tr>"
+    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(v.status) + "</td><td>" + v.batteryPercent + "%</td><td>" + esc(v.currentVertiportId || "-") + "</td></tr>"
   ).join("");
 }
 function renderOccupancy(vertiports) {
   document.getElementById("occupancy-panel").innerHTML =
     '<table><thead><tr><th>停机坪</th><th>占用</th><th>飞行器</th></tr></thead><tbody>' +
     vertiports.map((vp) =>
-      "<tr><td>" + vp.name + '</td><td><span class="tag ' + (vp.occupied ? "occupied" : "empty") + '">' +
-      (vp.occupied ? "有 (" + vp.vehicleCount + ")" : "无") + "</span></td><td>" + (vp.vehicleIds.join(", ") || "-") + "</td></tr>"
+      "<tr><td>" + esc(vp.name) + '</td><td><span class="tag ' + (vp.occupied ? "occupied" : "empty") + '">' +
+      (vp.occupied ? "有 (" + vp.vehicleCount + ")" : "无") + "</span></td><td>" + (vp.vehicleIds.map(esc).join(", ") || "-") + "</td></tr>"
     ).join("") + "</tbody></table>";
 }
 

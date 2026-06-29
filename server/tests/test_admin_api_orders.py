@@ -29,5 +29,10 @@ def test_force_status_invalid(auth_client):
     assert auth_client.post(f"/admin/api/orders/{o['id']}/status", json={"status": "NONSENSE"}).status_code == 422
 
 
+def test_force_status_rejects_active(auth_client):
+    o = _create_order(auth_client)
+    assert auth_client.post(f"/admin/api/orders/{o['id']}/status", json={"status": "IN_FLIGHT"}).status_code == 422
+
+
 def test_force_cancel_404(auth_client):
     assert auth_client.post("/admin/api/orders/nope/cancel").status_code == 404

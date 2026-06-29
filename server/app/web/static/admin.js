@@ -1,4 +1,5 @@
 const BASE = window.BASE || "";
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 async function crud(method, path, body) {
   const opt = { method, credentials: "same-origin", headers: { "Content-Type": "application/json" } };
   if (body) opt.body = JSON.stringify(body);
@@ -11,8 +12,8 @@ const val = (id) => document.getElementById(id).value.trim();
 async function loadVehicles() {
   const rows = await crud("GET", "/vehicles");
   document.querySelector("#vehicles-table tbody").innerHTML = rows.map((v) =>
-    "<tr><td>" + v.id + "</td><td>" + v.name + "</td><td>" + v.status + "</td><td>" + v.batteryPercent +
-    '%</td><td>' + (v.currentVertiportId || "-") + '</td><td><button class="btn" onclick="delVehicle(\'' + v.id + '\')">删除</button> ' +
+    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(v.status) + "</td><td>" + v.batteryPercent +
+    '%</td><td>' + esc(v.currentVertiportId || "-") + '</td><td><button class="btn" onclick="delVehicle(\'' + v.id + '\')">删除</button> ' +
     '<button class="btn" onclick="toggleMaint(\'' + v.id + '\',\'' + v.status + '\')">维护切换</button></td></tr>'
   ).join("");
 }
@@ -26,7 +27,7 @@ async function toggleMaint(id, status) { await crud("PUT", "/vehicles/" + id, { 
 async function loadVertiports() {
   const rows = await crud("GET", "/vertiports");
   document.querySelector("#vertiports-table tbody").innerHTML = rows.map((vp) =>
-    "<tr><td>" + vp.id + "</td><td>" + vp.name + '</td><td><span class="tag ' + (vp.occupied ? "occupied" : "empty") + '">' +
+    "<tr><td>" + esc(vp.id) + "</td><td>" + esc(vp.name) + '</td><td><span class="tag ' + (vp.occupied ? "occupied" : "empty") + '">' +
     (vp.occupied ? "有(" + vp.vehicleCount + ")" : "无") + '</span></td><td><button class="btn" onclick="delVertiport(\'' + vp.id + '\')">删除</button></td></tr>'
   ).join("");
 }
