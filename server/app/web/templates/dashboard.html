@@ -22,6 +22,9 @@
   <table id="fleet-table"><thead><tr><th>ID</th><th>名称</th><th>状态</th><th>电量</th><th>停靠坪</th></tr></thead><tbody></tbody></table>
 </div>
 <script>window.GAODE_KEY = "{{ gaode_key }}";</script>
-{% if gaode_key %}<script src="https://webapi.amap.com/maps?v=2.0&key={{ gaode_key }}"></script>{% endif %}
+{% if gaode_key %}
+<script>window._AMapSecurityConfig = { securityJsCode: "{{ gaode_secret }}" };</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key={{ gaode_key }}"></script>
+{% endif %}
 {% endblock %}
 {% block scripts %}<script src="{{ request.scope.root_path }}/static/dashboard.js"></script>{% endblock %}

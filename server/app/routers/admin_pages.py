@@ -22,8 +22,15 @@ def login_page(request: Request):
 def dashboard(request: Request):
     if not current_admin(request):
         return _login_redirect(request)
+    settings = get_settings()
     return templates.TemplateResponse(
-        request, "dashboard.html", {"admin": current_admin(request), "gaode_key": get_settings().gaode_web_key}
+        request,
+        "dashboard.html",
+        {
+            "admin": current_admin(request),
+            "gaode_key": settings.gaode_web_key,
+            "gaode_secret": settings.gaode_web_secret,
+        },
     )
 
 
