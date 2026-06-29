@@ -5,7 +5,7 @@ from app.geo import haversine_km, step_toward
 from app.models import Order, Vehicle, Vertiport
 from app.services import now_millis
 
-SPEEDS = {"RESERVED": 95.0, "IN_FLIGHT": 180.0, "RETURNING": 110.0}
+SPEEDS = {"RESERVED": 570.0, "IN_FLIGHT": 1080.0, "RETURNING": 660.0}  # 基准 95/180/110 km/h ×6
 ACTIVE = {"RESERVED", "BOARDING", "IN_FLIGHT", "RETURNING"}
 LEG_BATTERY_DROP = {"RESERVED": 4, "IN_FLIGHT": 12, "RETURNING": 5}
 

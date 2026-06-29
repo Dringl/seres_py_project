@@ -3,6 +3,15 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;",
 const api = (p) => fetch(BASE + "/admin/api" + p, { credentials: "same-origin" }).then((r) => r.json());
 
 let map = null, markers = [];
+const vehHeading = {}; // 飞行器航向：id -> {lng, lat, angle}，按上一帧→当前帧计算
+// 罗盘航向角（0=正北，顺时针），与 Android bearingDegrees 一致；高德 JS angle 为 CSS 顺时针
+function bearing(lng1, lat1, lng2, lat2) {
+  const r = Math.PI / 180;
+  const dLng = (lng2 - lng1) * r;
+  const y = Math.sin(dLng) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
 // 与 Android app 一致的地图图标（由 res/drawable 的 vector drawable 转为内联 SVG）
 const ICON_VERTIPORT =
   '<svg width="32" height="32" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><path fill="#F59E0B" d="M256,0C114.6,0 0,114.6 0,256s114.6,256 256,256s256,-114.6 256,-256S397.4,0 256,0zM368,360c0,13.25 -10.75,24 -24,24S320,373.3 320,360v-80H192v80C192,373.3 181.3,384 168,384S144,373.3 144,360v-208C144,138.8 154.8,128 168,128S192,138.8 192,152v80h128v-80C320,138.8 330.8,128 344,128s24,10.75 24,24V360z"/></svg>';
@@ -16,21 +25,27 @@ function initMap() {
     map = new AMap.Map("map", { zoom: 11, center: [106.55, 29.56] });
   }
 }
-function iconMarker(lng, lat, title, html, size) {
-  return new AMap.Marker({ position: [lng, lat], title: title, content: html, offset: new AMap.Pixel(-size / 2, -size / 2) });
+function iconMarker(lng, lat, title, html, size, angle) {
+  return new AMap.Marker({ position: [lng, lat], title: title, content: html, offset: new AMap.Pixel(-size / 2, -size / 2), angle: angle || 0 });
 }
 function drawMap(vehicles, vertiports) {
   if (!map || !window.AMap) return;
   markers.forEach((m) => map.remove(m));
   markers = [];
   vertiports.forEach((vp) => {
-    const m = iconMarker(vp.longitude, vp.latitude, vp.name, ICON_VERTIPORT, 32);
+    const m = iconMarker(vp.longitude, vp.latitude, vp.name, ICON_VERTIPORT, 32, 0);
     map.add(m); markers.push(m);
   });
   vehicles.forEach((v) => {
     const flying = v.status === "IN_FLIGHT" || v.status === "RETURNING";
+    const prev = vehHeading[v.id];
+    let angle = prev ? prev.angle : 0;
+    if (prev && (Math.abs(prev.lng - v.longitude) > 1e-6 || Math.abs(prev.lat - v.latitude) > 1e-6)) {
+      angle = bearing(prev.lng, prev.lat, v.longitude, v.latitude);
+    }
+    vehHeading[v.id] = { lng: v.longitude, lat: v.latitude, angle: angle };
     const m = iconMarker(v.longitude, v.latitude, v.id + " " + v.status,
-      flying ? ICON_PLANE_FLYING : ICON_PLANE, 28);
+      flying ? ICON_PLANE_FLYING : ICON_PLANE, 28, angle);
     map.add(m); markers.push(m);
   });
 }
