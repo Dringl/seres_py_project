@@ -233,7 +233,7 @@ class MainViewModel @Inject constructor(
                     priceEstimate = estimate,
                     flightRoute = flightRoute,
                     estimatedArrivalMinutes = pickup?.let { port ->
-                        estimateMinutesBySpeed(port.location.distanceTo(destination.location), averageSpeedKmPerHour = 180.0, minMinutes = 1)
+                        estimateMinutesBySpeed(port.location.distanceTo(destination.location), averageSpeedKmPerHour = 1080.0, minMinutes = 1)
                     }
                 )
             }
@@ -480,7 +480,7 @@ class MainViewModel @Inject constructor(
                 ) {
                     break
                 }
-                delay(1000)
+                delay(250)
             }
         }
     }
@@ -581,7 +581,7 @@ class MainViewModel @Inject constructor(
     }
 
     private fun estimateDriveMinutes(distanceKm: Double): Int {
-        val averageSpeedKmPerHour = 35.0
+        val averageSpeedKmPerHour = 210.0
         return ceil((distanceKm / averageSpeedKmPerHour) * 60.0).toInt().coerceAtLeast(3)
     }
 
@@ -596,12 +596,12 @@ class MainViewModel @Inject constructor(
         return when (order.status) {
             OrderStatus.RESERVED -> {
                 val target = pickupVertiport?.location ?: return null
-                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 95.0, minMinutes = 1)
+                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 570.0, minMinutes = 1)
             }
             OrderStatus.BOARDING -> 1
             OrderStatus.IN_FLIGHT -> {
                 val target = destination?.location ?: return null
-                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 180.0, minMinutes = 1)
+                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 1080.0, minMinutes = 1)
             }
             OrderStatus.RETURNING -> {
                 stateEstimateReturnMinutes(vehiclePoint)
@@ -613,7 +613,7 @@ class MainViewModel @Inject constructor(
     private fun stateEstimateReturnMinutes(vehiclePoint: GeoPoint): Int {
         val target = _uiState.value.allVertiports.minByOrNull { it.location.distanceTo(vehiclePoint) }?.location
             ?: return 1
-        return estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 120.0, minMinutes = 1)
+        return estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 720.0, minMinutes = 1)
     }
 
     private fun estimateMinutesBySpeed(

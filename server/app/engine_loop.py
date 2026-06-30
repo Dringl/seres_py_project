@@ -12,7 +12,7 @@ from app.simulation import tick
 
 logger = logging.getLogger(__name__)
 
-ENGINE_INTERVAL_SECONDS = 1.0
+ENGINE_INTERVAL_SECONDS = 0.25  # 更密的位置更新让 app/大屏动画更连贯（速度不变：step=speed/3600*dt）
 
 
 async def run_engine(stop_event: asyncio.Event, interval: float = ENGINE_INTERVAL_SECONDS) -> None:
