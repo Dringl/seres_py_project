@@ -1,5 +1,7 @@
 const BASE = window.BASE || "";
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+const ST={IDLE:"空闲",RESERVED:"已预约",BOARDING:"登机中",IN_FLIGHT:"飞行中",CHARGING:"充电中",MAINTENANCE:"维护中",OFFLINE:"离线",CREATED:"已创建",ASSIGNED:"已派单",RETURNING:"返航中",DONE:"已完成",CANCELED:"已取消",FAILED:"失败"};
+function zh(s){return ST[s]||s;}
 const api = (p) => fetch(BASE + "/admin/api" + p, { credentials: "same-origin" }).then((r) => r.json());
 
 const POLL_MS = 2000;
@@ -93,7 +95,7 @@ function updateVehicles(vehicles) {
     let r = vehMarkers[v.id];
     if (!r) {
       const m = new AMap.Marker({
-        position: [v.longitude, v.latitude], title: v.id + " " + v.status,
+        position: [v.longitude, v.latitude], title: v.id + " " + zh(v.status),
         content: iconHtml(svg, 28, 0), offset: new AMap.Pixel(-14, -14), zIndex: 80
       });
       map.add(m);
@@ -140,7 +142,7 @@ function renderCards(o) {
 }
 function renderFleet(vehicles) {
   document.querySelector("#fleet-table tbody").innerHTML = vehicles.map((v) =>
-    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(v.status) + "</td><td>" + v.batteryPercent + "%</td><td>" + esc(v.currentVertiportId || "-") + "</td></tr>"
+    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(zh(v.status)) + "</td><td>" + v.batteryPercent + "%</td><td>" + esc(v.currentVertiportId || "-") + "</td></tr>"
   ).join("");
 }
 function renderOccupancy(vertiports) {

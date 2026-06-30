@@ -1,5 +1,7 @@
 const BASE = window.BASE || "";
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+const ST={IDLE:"空闲",RESERVED:"已预约",BOARDING:"登机中",IN_FLIGHT:"飞行中",CHARGING:"充电中",MAINTENANCE:"维护中",OFFLINE:"离线"};
+function zh(s){return ST[s]||s;}
 async function crud(method, path, body) {
   const opt = { method, credentials: "same-origin", headers: { "Content-Type": "application/json" } };
   if (body) opt.body = JSON.stringify(body);
@@ -12,7 +14,7 @@ const val = (id) => document.getElementById(id).value.trim();
 async function loadVehicles() {
   const rows = await crud("GET", "/vehicles");
   document.querySelector("#vehicles-table tbody").innerHTML = rows.map((v) =>
-    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(v.status) + "</td><td>" + v.batteryPercent +
+    "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(zh(v.status)) + "</td><td>" + v.batteryPercent +
     '%</td><td>' + esc(v.currentVertiportId || "-") + '</td><td><button class="btn" onclick="delVehicle(\'' + v.id + '\')">删除</button> ' +
     '<button class="btn" onclick="toggleMaint(\'' + v.id + '\',\'' + v.status + '\')">维护切换</button></td></tr>'
   ).join("");
