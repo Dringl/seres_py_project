@@ -56,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -858,8 +859,14 @@ private fun MapHeroSection(
     var smoothingTargetPoint by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
     var smoothedActiveVehicleHeading by remember(mapView) { mutableStateOf<Float?>(null) }
     var smoothingTargetHeading by remember(mapView) { mutableStateOf<Float?>(null) }
-    // 非活动飞行器的航向：id -> (上次位置, 上次航向)，按位移计算朝向
-    val vehicleHeadingCache = remember(mapView) { mutableMapOf<String, Pair<GeoPoint, Float>>() }
+    // 活动飞行器线性插值：本段动画起点与起始时间（基于时间匀速移动，避免一顿一顿）
+    var activeAnimStart by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
+    var activeAnimStartTime by remember(mapView) { mutableStateOf(0L) }
+    // 所有飞行器（含他人正在飞的）线性插值显示位置与航向，让非活动飞行器也连续移动
+    val smoothedVehiclePoints = remember(mapView) { mutableStateMapOf<String, GeoPoint>() }
+    val smoothedVehicleHeadings = remember(mapView) { mutableStateMapOf<String, Float>() }
+    // id -> (本段起点, 本段目标, 起始时间ms)
+    val vehicleAnims = remember(mapView) { mutableMapOf<String, Triple<GeoPoint, GeoPoint, Long>>() }
 
     LaunchedEffect(state.activeVehicleLocation, state.activeOrder?.status) {
         val target = state.activeVehicleLocation
@@ -868,17 +875,23 @@ private fun MapHeroSection(
             smoothingTargetPoint = null
             smoothedActiveVehicleHeading = null
             smoothingTargetHeading = null
+            activeAnimStart = null
             return@LaunchedEffect
         }
         val current = smoothedActiveVehiclePoint
         if (current == null) {
             smoothedActiveVehiclePoint = target
             smoothingTargetPoint = target
+            activeAnimStart = target
+            activeAnimStartTime = System.currentTimeMillis()
             val resolvedHeading = resolveActiveVehicleHeading(state, target)
             smoothedActiveVehicleHeading = resolvedHeading
             smoothingTargetHeading = resolvedHeading
             return@LaunchedEffect
         }
+        // 新采样点：从当前显示位置匀速线性滑向新目标
+        activeAnimStart = current
+        activeAnimStartTime = System.currentTimeMillis()
         smoothingTargetPoint = target
         val resolvedHeading = resolveActiveVehicleHeading(state, target)
         smoothingTargetHeading = resolvedHeading
@@ -887,13 +900,40 @@ private fun MapHeroSection(
         }
     }
 
+    // 非活动飞行器：每次轮询刷新后，为每台设置新的线性动画目标
+    LaunchedEffect(state.nearbyVehicles) {
+        val nowMs = System.currentTimeMillis()
+        val seen = HashSet<String>()
+        state.nearbyVehicles.forEach { v ->
+            seen += v.id
+            val shown = smoothedVehiclePoints[v.id]
+            if (shown == null) {
+                smoothedVehiclePoints[v.id] = v.location
+                vehicleAnims[v.id] = Triple(v.location, v.location, nowMs)
+            } else {
+                vehicleAnims[v.id] = Triple(shown, v.location, nowMs)
+                if (shown.distanceTo(v.location) > 0.0003) {
+                    smoothedVehicleHeadings[v.id] = bearingDegrees(shown, v.location)
+                }
+            }
+        }
+        (smoothedVehiclePoints.keys - seen).toList().forEach {
+            smoothedVehiclePoints.remove(it)
+            smoothedVehicleHeadings.remove(it)
+            vehicleAnims.remove(it)
+        }
+    }
+
     LaunchedEffect(mapView) {
+        val durationMs = 300f  // 略大于 0.25s 轮询周期，保证始终在移动、不停顿
         while (true) {
+            val nowMs = System.currentTimeMillis()
+            // 活动飞行器：基于时间的匀速线性插值（从本段起点滑向目标）
             val target = smoothingTargetPoint
-            val current = smoothedActiveVehiclePoint
-            if (target != null && current != null) {
-                val next = interpolateGeoPoint(current, target, 0.18)
-                smoothedActiveVehiclePoint = if (next.distanceTo(target) <= 0.0012) target else next
+            val start = activeAnimStart
+            if (target != null && start != null) {
+                val frac = ((nowMs - activeAnimStartTime).toFloat() / durationMs).coerceIn(0f, 1f)
+                smoothedActiveVehiclePoint = interpolateGeoPoint(start, target, frac.toDouble())
             }
             val currentHeading = smoothedActiveVehicleHeading
             val targetHeading = smoothingTargetHeading
@@ -901,6 +941,14 @@ private fun MapHeroSection(
                 smoothedActiveVehicleHeading = interpolateHeading(currentHeading, targetHeading, 0.22f)
             } else if (targetHeading == null) {
                 smoothedActiveVehicleHeading = null
+            }
+            // 其余所有飞行器：同样基于时间匀速线性插值
+            if (vehicleAnims.isNotEmpty()) {
+                vehicleAnims.entries.toList().forEach { (id, anim) ->
+                    val (aStart, aTarget, t0) = anim
+                    val frac = ((nowMs - t0).toFloat() / durationMs).coerceIn(0f, 1f)
+                    smoothedVehiclePoints[id] = interpolateGeoPoint(aStart, aTarget, frac.toDouble())
+                }
             }
             delay(16)
         }
@@ -1018,7 +1066,8 @@ private fun MapHeroSection(
                     renderCache = renderCache,
                     smoothedActiveVehiclePoint = smoothedActiveVehiclePoint,
                     smoothedActiveVehicleHeading = smoothedActiveVehicleHeading,
-                    vehicleHeadingCache = vehicleHeadingCache
+                    smoothedVehiclePoints = smoothedVehiclePoints,
+                    smoothedVehicleHeadings = smoothedVehicleHeadings
                 )
                 aMap.renderRoutePolylines(
                     state = state,
@@ -1475,7 +1524,8 @@ private fun AMap.drawEntityMarkers(
     renderCache: MapRenderCache,
     smoothedActiveVehiclePoint: GeoPoint?,
     smoothedActiveVehicleHeading: Float?,
-    vehicleHeadingCache: MutableMap<String, Pair<GeoPoint, Float>>
+    smoothedVehiclePoints: Map<String, GeoPoint>,
+    smoothedVehicleHeadings: Map<String, Float>
 ) {
     val allVertiports = state.allVertiports.ifEmpty { state.vertiports }
     val activeOrder = state.activeOrder
@@ -1538,7 +1588,7 @@ private fun AMap.drawEntityMarkers(
         val rawVehiclePoint = if (isActiveVehicle) {
             smoothedActiveVehiclePoint ?: state.activeVehicleLocation ?: vehicle.location
         } else {
-            vehicle.location
+            smoothedVehiclePoints[vehicle.id] ?: vehicle.location
         }
         val isFlying = if (isActiveVehicle && activeOrder != null) {
             activeOrder.status == OrderStatus.IN_FLIGHT
@@ -1562,14 +1612,7 @@ private fun AMap.drawEntityMarkers(
         val heading = if (isActiveVehicle) {
             smoothedActiveVehicleHeading ?: resolveActiveVehicleHeading(state, vehiclePoint)
         } else {
-            val prevH = vehicleHeadingCache[vehicle.id]
-            val computed = if (prevH != null && prevH.first.distanceTo(vehiclePoint) > 0.0003) {
-                bearingDegrees(prevH.first, vehiclePoint)
-            } else {
-                prevH?.second
-            }
-            vehicleHeadingCache[vehicle.id] = vehiclePoint to (computed ?: prevH?.second ?: 0f)
-            computed
+            smoothedVehicleHeadings[vehicle.id]
         }
         val key = "vehicle:${vehicle.id}"
         visibleMarkerKeys += key

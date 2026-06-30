@@ -97,3 +97,52 @@ def test_battery_drain_has_floor_of_10():
     tick(s, dt_seconds=1.0)
     s.refresh(v)
     assert v.battery_percent >= 10
+
+
+def _boarding_order(s, vehicle_id, updated_at):
+    v = s.get(Vehicle, vehicle_id)
+    v.status = "BOARDING"
+    v.current_vertiport_id = "vp001"
+    pvp = s.get(Vertiport, "vp001")
+    o = Order(
+        id="O-BOARD", pickup_lat=pvp.latitude, pickup_lng=pvp.longitude,
+        pickup_vertiport_id="vp001", vehicle_origin_lat=v.latitude, vehicle_origin_lng=v.longitude,
+        destination_id="vp006", vehicle_id=vehicle_id, status="BOARDING",
+        amount_cents=5000, distance_km=10.0, currency="CNY", cancellation_fee_cents=0,
+        created_at=updated_at, updated_at=updated_at,
+    )
+    s.add(o)
+    s.commit()
+    return o
+
+
+def test_boarding_timeout_auto_cancels_with_fee():
+    s = _seeded()
+    _boarding_order(s, "ev002", updated_at=now_millis() - 200_000)  # 到达已超 3 分钟
+    tick(s, dt_seconds=1.0)
+    o = s.get(Order, "O-BOARD")
+    v = s.get(Vehicle, "ev002")
+    s.refresh(o)
+    s.refresh(v)
+    assert o.status == "CANCELED"
+    assert o.cancellation_fee_cents == 5000  # 未登机额外费用
+    assert v.status == "IDLE"  # 飞行器恢复空闲
+
+
+def test_boarding_within_window_not_cancelled():
+    s = _seeded()
+    _boarding_order(s, "ev002", updated_at=now_millis())  # 刚到达，未超时
+    tick(s, dt_seconds=1.0)
+    o = s.get(Order, "O-BOARD")
+    s.refresh(o)
+    assert o.status == "BOARDING"
+
+
+def test_parked_idle_vehicle_recovers_battery():
+    s = _seeded()
+    v = s.get(Vehicle, "ev002")  # 种子：IDLE，停 vp001，电量 74，updated_at=0
+    assert v.status == "IDLE" and v.current_vertiport_id is not None
+    before = v.battery_percent
+    tick(s, dt_seconds=1.0)  # updated_at=0 远早于充电间隔 → 充 1%
+    s.refresh(v)
+    assert v.battery_percent == before + 1
