@@ -18,6 +18,15 @@ interface DispatchApi {
     @POST("orders")
     suspend fun createOrder(@Body request: CreateOrderRequestDto): OrderDto
 
+    @GET("orders/{id}")
+    suspend fun getOrder(@Path("id") orderId: String): OrderDto
+
+    @GET("orders")
+    suspend fun getOrders(): List<OrderDto>
+
+    @POST("orders/{id}/board")
+    suspend fun board(@Path("id") orderId: String): OrderDto
+
     @POST("orders/{id}/cancel")
-    suspend fun cancelOrder(@Path("id") orderId: String)
+    suspend fun cancelOrder(@Path("id") orderId: String): OrderDto
 }

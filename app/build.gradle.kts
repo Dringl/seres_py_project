@@ -23,7 +23,9 @@ android {
 
         val gaodeKey = (project.findProperty("GAODE_WEB_KEY") as String?) ?: ""
 
-        buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000/\"")
+        val serverBaseUrl = (project.findProperty("SERVER_BASE_URL") as String?) ?: "https://bq-star.com/evtol/"
+        buildConfigField("String", "BASE_URL", "\"$serverBaseUrl\"")
+        buildConfigField("boolean", "USE_FAKE_REPOSITORY", "false")
         buildConfigField(
             "String",
             "TDT_TOKEN",
@@ -91,6 +93,7 @@ dependencies {
 
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     implementation("androidx.room:room-runtime:2.6.1")
@@ -116,3 +119,8 @@ dependencies {
 kapt {
     correctErrorTypes = true
 }
+
+// Android application 模块没有 JVM(java) 插件的 testClasses 任务；
+// Android Studio 的 "Build Project"(Ctrl+F9) 委托 Gradle 时会调用 :app:testClasses，
+// 注册一个空任务避免 "task 'testClasses' not found"。
+tasks.register("testClasses")

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}eVTOL 管理台{% endblock %}</title>
+  <link rel="stylesheet" href="{{ request.scope.root_path }}/static/admin.css">
+  <script>window.BASE = "{{ request.scope.root_path }}";</script>
+</head>
+<body>
+  {% block body %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,17 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/data/evtol.db
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-change-me-please}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret}
+      - APP_API_KEY=${APP_API_KEY:-}
+    volumes:
+      - evtol-data:/data
+    restart: unless-stopped
+
+volumes:
+  evtol-data:

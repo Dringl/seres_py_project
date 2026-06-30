@@ -1,4 +1,5 @@
-org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+# 6GB 堆：加入 moshi-kotlin(kotlin-reflect) 后 4GB 在 dex 合并阶段会 OOM
+org.gradle.jvmargs=-Xmx6144m -Dfile.encoding=UTF-8
 org.gradle.workers.max=1
 android.useAndroidX=true
 android.nonTransitiveRClass=true
@@ -8,3 +9,5 @@ kotlin.code.style=official
 # Fill these locally in gradle.properties. Do not commit real keys.
 TDT_TOKEN=
 GAODE_WEB_KEY=
+# 后端基址（计划三 Android 接入）；缺省时 build.gradle.kts 用 https://bq-star.com/evtol/
+SERVER_BASE_URL=https://bq-star.com/evtol/

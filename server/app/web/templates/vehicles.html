@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}机队管理{% endblock %}
+{% block body %}
+<div class="topbar">
+  <strong>eVTOL 管理台</strong>
+  <a href="{{ request.scope.root_path }}/admin">总览</a>
+  <a class="active" href="{{ request.scope.root_path }}/admin/vehicles">机队</a>
+  <a href="{{ request.scope.root_path }}/admin/vertiports">停机坪</a>
+  <a href="{{ request.scope.root_path }}/admin/orders">订单</a>
+  <a href="{{ request.scope.root_path }}/admin/users">用户</a>
+  <span class="spacer"></span>
+  <form method="post" action="{{ request.scope.root_path }}/admin/logout" style="margin:0"><button class="btn">登出</button></form>
+</div>
+<div class="wrap">
+  <h3>新增飞行器</h3>
+  <div class="row-form">
+    <input id="nv-name" placeholder="名称">
+    <input id="nv-lat" placeholder="纬度" type="number" step="any">
+    <input id="nv-lng" placeholder="经度" type="number" step="any">
+    <input id="nv-batt" placeholder="电量" type="number" value="100">
+    <input id="nv-vp" placeholder="停靠坪ID(可空)">
+    <button class="btn primary" onclick="createVehicle()">+ 新增飞行器</button>
+  </div>
+  <h3>机队</h3>
+  <table id="vehicles-table"><thead><tr><th>ID</th><th>名称</th><th>状态</th><th>电量</th><th>停靠坪</th><th>操作</th></tr></thead><tbody></tbody></table>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ request.scope.root_path }}/static/admin.js"></script><script>loadVehicles();</script>{% endblock %}

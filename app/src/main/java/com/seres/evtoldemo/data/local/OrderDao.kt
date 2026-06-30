@@ -12,4 +12,7 @@ interface OrderDao {
 
     @Query("SELECT * FROM orders ORDER BY createdAt DESC")
     suspend fun getAll(): List<OrderEntity>
+
+    @Query("DELETE FROM orders")
+    suspend fun deleteAll()
 }

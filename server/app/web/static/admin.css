@@ -1,0 +1,60 @@
+:root {
+  --fg:#1c1f23; --muted:#6b7280; --line:#dcdfe4; --accent:#1d9e75; --accent-d:#157a59;
+  --danger:#dc2626; --danger-d:#b91c1c; --bg:#f4f6f9; --card:#fff;
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family: system-ui, "Microsoft YaHei", sans-serif; color:var(--fg); background:var(--bg); }
+
+/* 登录 */
+.login-wrap { max-width:340px; margin:12vh auto; background:var(--card); padding:32px; border:1px solid var(--line); border-radius:14px; box-shadow:0 8px 30px rgba(0,0,0,.06); }
+.login-wrap h1 { font-size:21px; font-weight:600; margin:0 0 20px; }
+.login-wrap input { display:block; width:100%; padding:12px; margin:10px 0; border:1px solid var(--line); border-radius:9px; font-size:15px; }
+.login-wrap input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(29,158,117,.15); }
+.login-wrap button { width:100%; padding:12px; margin-top:10px; border:0; border-radius:9px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; cursor:pointer; }
+.login-wrap button:hover { background:var(--accent-d); }
+.error { color:#c0392b; font-size:13px; }
+
+/* 顶栏 */
+.topbar { display:flex; align-items:center; gap:6px; padding:12px 22px; background:var(--card); border-bottom:1px solid var(--line); box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.topbar strong { margin-right:10px; font-size:16px; }
+.topbar a { color:var(--muted); text-decoration:none; padding:8px 14px; border-radius:8px; font-size:14px; font-weight:500; transition:.15s; }
+.topbar a:hover { color:var(--fg); background:var(--bg); }
+.topbar a.active { color:#fff; background:var(--accent); }
+.topbar .spacer { flex:1; }
+.topbar .l { color:var(--muted); font-size:13px; margin-right:6px; }
+
+/* 布局 */
+.wrap { padding:24px; max-width:1600px; margin:0 auto; }
+.wrap h3 { font-size:16px; font-weight:600; margin:22px 0 12px; }
+.cards { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:18px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 20px; min-width:130px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.card .n { font-size:26px; font-weight:600; }
+.card .l { color:var(--muted); font-size:13px; }
+
+/* 表格 */
+table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+th, td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); font-size:14px; }
+tbody tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:#fafbfc; }
+th { background:var(--bg); color:var(--muted); font-weight:600; font-size:13px; }
+
+/* 标签 */
+.tag { padding:3px 10px; border-radius:12px; font-size:12px; font-weight:500; background:var(--bg); }
+.tag.occupied { background:#e1f5ee; color:var(--accent-d); }
+.tag.empty { color:var(--muted); }
+
+#map { height:calc(100vh - 220px); min-height:520px; border:1px solid var(--line); border-radius:12px; margin-bottom:18px; background:#eef; }
+
+/* 按钮：默认带边框可见；primary 绿色填充；danger 红色危险操作 */
+button.btn { padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); cursor:pointer; font-size:13px; font-weight:500; transition:.15s; }
+button.btn:hover { background:var(--bg); border-color:#c5c9d0; }
+button.btn:active { transform:translateY(1px); }
+button.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.btn.primary:hover { background:var(--accent-d); border-color:var(--accent-d); }
+button.btn.danger { background:#fff; border-color:#f0c2c2; color:var(--danger); }
+button.btn.danger:hover { background:var(--danger); border-color:var(--danger); color:#fff; }
+
+/* 表单 */
+.row-form { display:flex; flex-wrap:wrap; align-items:center; gap:8px; background:var(--card); padding:14px; border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+.row-form input, .row-form select { padding:9px 11px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+.row-form input:focus, .row-form select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(29,158,117,.15); }

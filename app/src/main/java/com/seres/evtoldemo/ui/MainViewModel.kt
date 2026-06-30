@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.seres.evtoldemo.BuildConfig
 import com.seres.evtoldemo.R
+import com.seres.evtoldemo.data.auth.AuthStore
 import com.seres.evtoldemo.data.navigation.DrivingRouteEngine
 import com.seres.evtoldemo.data.model.GeoPoint
 import com.seres.evtoldemo.data.model.Order
@@ -44,7 +45,8 @@ class MainViewModel @Inject constructor(
     private val cancelOrderUseCase: CancelOrderUseCase,
     private val getOrderHistoryUseCase: GetOrderHistoryUseCase,
     private val drivingRouteEngine: DrivingRouteEngine,
-    private val locationTracker: LocationTracker
+    private val locationTracker: LocationTracker,
+    private val authStore: AuthStore
 ) : ViewModel() {
 
     private val tag = "MainViewModel"
@@ -66,6 +68,7 @@ class MainViewModel @Inject constructor(
 
     private var observeOrderJob: Job? = null
     private var vehiclePollingJob: Job? = null
+    private var fleetPollingJob: Job? = null
     private var tripResetJob: Job? = null
 
     init {
@@ -233,7 +236,7 @@ class MainViewModel @Inject constructor(
                     priceEstimate = estimate,
                     flightRoute = flightRoute,
                     estimatedArrivalMinutes = pickup?.let { port ->
-                        estimateMinutesBySpeed(port.location.distanceTo(destination.location), averageSpeedKmPerHour = 180.0, minMinutes = 1)
+                        estimateMinutesBySpeed(port.location.distanceTo(destination.location), averageSpeedKmPerHour = 2160.0, minMinutes = 1)
                     }
                 )
             }
@@ -358,14 +361,26 @@ class MainViewModel @Inject constructor(
 
     private fun loadInitialData() {
         viewModelScope.launch {
-            val allVertiports = getVertiportsUseCase()
-            val history = getOrderHistoryUseCase()
+            val allVertiports = try { getVertiportsUseCase() } catch (e: Exception) { emptyList() }
+            val history = try { getOrderHistoryUseCase() } catch (e: Exception) { emptyList() }
+            // 断点续单：若该用户有进行中的订单，恢复行程并继续观察
+            val resumable = history.firstOrNull { it.status in RESUMABLE_STATUSES }
             _uiState.update {
                 it.copy(
                     allVertiports = allVertiports,
                     vertiports = allVertiports.take(8),
-                    orderHistory = history
+                    orderHistory = history,
+                    activeOrder = resumable ?: it.activeOrder,
+                    selectedDestination = resumable?.destination ?: it.selectedDestination,
+                    pickupVertiport = resumable?.pickupVertiport ?: it.pickupVertiport,
+                    // 不用起点种 activeVehicleLocation(会让飞行器先闪现在起点再跳)，留给机队轮询填真实当前位置
+                    groundRoute = resumable?.let { o -> buildRoute(o.vehicleOrigin, o.pickupVertiport.location) } ?: it.groundRoute,
+                    flightRoute = resumable?.let { o -> buildRoute(o.pickupVertiport.location, o.destination.location) } ?: it.flightRoute
                 )
+            }
+            if (resumable != null) {
+                debugLog("resume active order ${resumable.id} status=${resumable.status}")
+                observeOrder(resumable)
             }
         }
     }
@@ -451,43 +466,35 @@ class MainViewModel @Inject constructor(
     }
 
     private fun updateVehiclePollingByOrderState(order: Order?) {
-        val running = order?.status in setOf(
-            OrderStatus.RESERVED,
-            OrderStatus.BOARDING,
-            OrderStatus.IN_FLIGHT,
-            OrderStatus.RETURNING
-        )
-        if (!running) {
-            vehiclePollingJob?.cancel()
-            vehiclePollingJob = null
+        // 机队位置改为常驻轮询：无论本机有无进行中订单，都持续刷新附近飞行器，
+        // 这样任意设备都能实时看到其他设备订单的飞行器在移动。
+        ensureFleetPolling()
+    }
+
+    private fun ensureFleetPolling() {
+        if (fleetPollingJob?.isActive == true) {
             return
         }
-
-        if (vehiclePollingJob?.isActive == true) {
-            return
-        }
-
-        vehiclePollingJob = viewModelScope.launch {
+        fleetPollingJob = viewModelScope.launch {
             while (isActive) {
-                reloadNearbyVehicles()
-                val current = _uiState.value.activeOrder
-                if (current == null || current.status !in setOf(
-                        OrderStatus.RESERVED,
-                        OrderStatus.BOARDING,
-                        OrderStatus.IN_FLIGHT,
-                        OrderStatus.RETURNING
-                    )
-                ) {
-                    break
+                // 已登录且有定位才轮询；登出后 token 为空，停止空轮询(避免无谓 401)
+                if (authStore.token != null && _uiState.value.currentLocation != null) {
+                    reloadNearbyVehicles()
                 }
-                delay(160)
+                delay(250)
             }
         }
     }
 
     private suspend fun reloadNearbyVehicles() {
         val location = _uiState.value.currentLocation ?: return
-        val vehicles = getNearbyVehiclesUseCase(location)
+        // 常驻轮询：任何网络错误(502/401/超时等)都吞掉，绝不让异常冒泡崩溃 App
+        val vehicles = try {
+            getNearbyVehiclesUseCase(location)
+        } catch (e: Exception) {
+            debugError("reloadNearbyVehicles failed", e)
+            return
+        }
         _uiState.update { state ->
             val activeVehicleLocation = state.activeOrder?.let { activeOrder ->
                 vehicles.firstOrNull { it.id == activeOrder.vehicleId }?.location
@@ -516,7 +523,12 @@ class MainViewModel @Inject constructor(
     }
 
     private suspend fun reloadHistory() {
-        val history = getOrderHistoryUseCase()
+        val history = try {
+            getOrderHistoryUseCase()
+        } catch (e: Exception) {
+            debugError("reloadHistory failed", e)
+            return
+        }
         _uiState.update { it.copy(orderHistory = history) }
     }
 
@@ -581,7 +593,7 @@ class MainViewModel @Inject constructor(
     }
 
     private fun estimateDriveMinutes(distanceKm: Double): Int {
-        val averageSpeedKmPerHour = 35.0
+        val averageSpeedKmPerHour = 210.0
         return ceil((distanceKm / averageSpeedKmPerHour) * 60.0).toInt().coerceAtLeast(3)
     }
 
@@ -596,12 +608,12 @@ class MainViewModel @Inject constructor(
         return when (order.status) {
             OrderStatus.RESERVED -> {
                 val target = pickupVertiport?.location ?: return null
-                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 95.0, minMinutes = 1)
+                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 1140.0, minMinutes = 1)
             }
             OrderStatus.BOARDING -> 1
             OrderStatus.IN_FLIGHT -> {
                 val target = destination?.location ?: return null
-                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 180.0, minMinutes = 1)
+                estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 2160.0, minMinutes = 1)
             }
             OrderStatus.RETURNING -> {
                 stateEstimateReturnMinutes(vehiclePoint)
@@ -613,7 +625,7 @@ class MainViewModel @Inject constructor(
     private fun stateEstimateReturnMinutes(vehiclePoint: GeoPoint): Int {
         val target = _uiState.value.allVertiports.minByOrNull { it.location.distanceTo(vehiclePoint) }?.location
             ?: return 1
-        return estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 120.0, minMinutes = 1)
+        return estimateMinutesBySpeed(vehiclePoint.distanceTo(target), averageSpeedKmPerHour = 1440.0, minMinutes = 1)
     }
 
     private fun estimateMinutesBySpeed(
@@ -673,6 +685,14 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         val DEFAULT_LOCATION = GeoPoint(29.5630, 106.5516)
+        val RESUMABLE_STATUSES = setOf(
+            OrderStatus.CREATED,
+            OrderStatus.ASSIGNED,
+            OrderStatus.RESERVED,
+            OrderStatus.BOARDING,
+            OrderStatus.IN_FLIGHT,
+            OrderStatus.RETURNING
+        )
     }
 
     private data class GroundRouteInfo(
