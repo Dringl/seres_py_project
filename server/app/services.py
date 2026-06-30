@@ -22,7 +22,8 @@ def now_millis() -> int:
 
 
 def new_order_id() -> str:
-    return f"ODR-{str(now_millis())[-6:]}-{random.randint(100, 999)}"
+    # 完整毫秒 + 4 位随机，降低同毫秒主键冲突概率
+    return f"ODR-{now_millis()}-{random.randint(1000, 9999)}"
 
 
 def estimate_price(distance_km: float) -> tuple[int, float]:

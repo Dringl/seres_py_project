@@ -373,7 +373,7 @@ class MainViewModel @Inject constructor(
                     activeOrder = resumable ?: it.activeOrder,
                     selectedDestination = resumable?.destination ?: it.selectedDestination,
                     pickupVertiport = resumable?.pickupVertiport ?: it.pickupVertiport,
-                    activeVehicleLocation = resumable?.vehicleOrigin ?: it.activeVehicleLocation,
+                    // 不用起点种 activeVehicleLocation(会让飞行器先闪现在起点再跳)，留给机队轮询填真实当前位置
                     groundRoute = resumable?.let { o -> buildRoute(o.vehicleOrigin, o.pickupVertiport.location) } ?: it.groundRoute,
                     flightRoute = resumable?.let { o -> buildRoute(o.pickupVertiport.location, o.destination.location) } ?: it.flightRoute
                 )

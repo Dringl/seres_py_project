@@ -1,3 +1,5 @@
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -65,6 +67,9 @@ def me(user: User = Depends(get_current_user)):
 # 受保护路由：以下所有接口都要求登录（未登录禁止查看任何信息）
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
+# 串行化下单的"选车+预约"临界区（单 worker 进程内有效），防止并发重复派单
+_create_order_lock = threading.Lock()
+
 
 @router.get("/vertiports", response_model=list[VertiportDto])
 def get_vertiports(session: Session = Depends(get_session)):
@@ -125,39 +130,41 @@ def create_order(
     dest_vp = session.get(Vertiport, req.destinationVertiportId)
     if pickup_vp is None or dest_vp is None:
         raise HTTPException(status_code=404, detail="vertiport not found")
-    vehicle = nearest_vehicle_for(session, pickup_vp.latitude, pickup_vp.longitude)
-    if vehicle is None:
-        raise HTTPException(status_code=409, detail="no available vehicle")
 
     distance = haversine_km(pickup_vp.latitude, pickup_vp.longitude, dest_vp.latitude, dest_vp.longitude)
     amount, dist = estimate_price(distance)
-    now = now_millis()
 
-    vehicle.status = "RESERVED"
-    vehicle.current_vertiport_id = None
-    vehicle.updated_at = now
+    # 选车→预约→落库 串行化，避免两个并发请求把同一空闲飞行器重复派单
+    with _create_order_lock:
+        vehicle = nearest_vehicle_for(session, pickup_vp.latitude, pickup_vp.longitude)
+        if vehicle is None:
+            raise HTTPException(status_code=409, detail="no available vehicle")
+        now = now_millis()
+        vehicle.status = "RESERVED"
+        vehicle.current_vertiport_id = None
+        vehicle.updated_at = now
 
-    order = Order(
-        id=new_order_id(),
-        pickup_lat=req.pickup.latitude,
-        pickup_lng=req.pickup.longitude,
-        pickup_vertiport_id=pickup_vp.id,
-        vehicle_origin_lat=vehicle.latitude,
-        vehicle_origin_lng=vehicle.longitude,
-        destination_id=dest_vp.id,
-        vehicle_id=vehicle.id,
-        user_id=user.id,
-        status="RESERVED",
-        amount_cents=amount,
-        distance_km=dist,
-        currency="CNY",
-        cancellation_fee_cents=0,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(order)
-    session.commit()
-    session.refresh(order)
+        order = Order(
+            id=new_order_id(),
+            pickup_lat=req.pickup.latitude,
+            pickup_lng=req.pickup.longitude,
+            pickup_vertiport_id=pickup_vp.id,
+            vehicle_origin_lat=vehicle.latitude,
+            vehicle_origin_lng=vehicle.longitude,
+            destination_id=dest_vp.id,
+            vehicle_id=vehicle.id,
+            user_id=user.id,
+            status="RESERVED",
+            amount_cents=amount,
+            distance_km=dist,
+            currency="CNY",
+            cancellation_fee_cents=0,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(order)
+        session.commit()
+        session.refresh(order)
     return _load_order_dto(session, order)
 
 
