@@ -97,7 +97,9 @@ import com.seres.evtoldemo.data.model.GeoPoint
 import com.seres.evtoldemo.data.model.OrderStatus
 import com.seres.evtoldemo.data.model.VehicleStatus
 import com.seres.evtoldemo.data.model.Vertiport
+import com.seres.evtoldemo.data.auth.AuthState
 import com.seres.evtoldemo.data.model.distanceTo
+import com.seres.evtoldemo.ui.auth.AuthViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -576,6 +578,7 @@ private fun MoreTab(
                 )
             }
         }
+        item { AccountSection() }
         item { VehicleSection(state) }
         item { OrderHistorySection(state) }
         item {
@@ -590,6 +593,27 @@ private fun MoreTab(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AccountSection() {
+    val authViewModel: AuthViewModel = hiltViewModel()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val username = (authState as? AuthState.LoggedIn)?.username ?: "-"
+    CyberPanel(
+        title = "账号",
+        subtitle = username,
+        accent = MaterialTheme.colorScheme.primary
+    ) {
+        Text(
+            text = "当前登录：$username",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(onClick = { authViewModel.logout() }) {
+            Text("退出登录")
         }
     }
 }

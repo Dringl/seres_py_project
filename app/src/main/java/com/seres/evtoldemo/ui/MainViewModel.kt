@@ -361,12 +361,24 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             val allVertiports = getVertiportsUseCase()
             val history = getOrderHistoryUseCase()
+            // 断点续单：若该用户有进行中的订单，恢复行程并继续观察
+            val resumable = history.firstOrNull { it.status in RESUMABLE_STATUSES }
             _uiState.update {
                 it.copy(
                     allVertiports = allVertiports,
                     vertiports = allVertiports.take(8),
-                    orderHistory = history
+                    orderHistory = history,
+                    activeOrder = resumable ?: it.activeOrder,
+                    selectedDestination = resumable?.destination ?: it.selectedDestination,
+                    pickupVertiport = resumable?.pickupVertiport ?: it.pickupVertiport,
+                    activeVehicleLocation = resumable?.vehicleOrigin ?: it.activeVehicleLocation,
+                    groundRoute = resumable?.let { o -> buildRoute(o.vehicleOrigin, o.pickupVertiport.location) } ?: it.groundRoute,
+                    flightRoute = resumable?.let { o -> buildRoute(o.pickupVertiport.location, o.destination.location) } ?: it.flightRoute
                 )
+            }
+            if (resumable != null) {
+                debugLog("resume active order ${resumable.id} status=${resumable.status}")
+                observeOrder(resumable)
             }
         }
     }
@@ -659,6 +671,14 @@ class MainViewModel @Inject constructor(
 
     private companion object {
         val DEFAULT_LOCATION = GeoPoint(29.5630, 106.5516)
+        val RESUMABLE_STATUSES = setOf(
+            OrderStatus.CREATED,
+            OrderStatus.ASSIGNED,
+            OrderStatus.RESERVED,
+            OrderStatus.BOARDING,
+            OrderStatus.IN_FLIGHT,
+            OrderStatus.RETURNING
+        )
     }
 
     private data class GroundRouteInfo(

@@ -3,8 +3,10 @@
 import android.content.Context
 import androidx.room.Room
 import com.seres.evtoldemo.BuildConfig
+import com.seres.evtoldemo.data.auth.AuthInterceptor
 import com.seres.evtoldemo.data.local.AppDatabase
 import com.seres.evtoldemo.data.local.OrderDao
+import com.seres.evtoldemo.data.remote.AuthApi
 import com.seres.evtoldemo.data.remote.DispatchApi
 import com.seres.evtoldemo.data.repository.DispatchRepository
 import com.seres.evtoldemo.data.repository.FakeDispatchRepository
@@ -29,7 +31,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
@@ -51,6 +54,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDispatchApi(retrofit: Retrofit): DispatchApi = retrofit.create(DispatchApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAuthApi(retrofit: Retrofit): AuthApi = retrofit.create(AuthApi::class.java)
 
     @Provides
     @Singleton
