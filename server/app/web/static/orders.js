@@ -13,7 +13,7 @@ async function loadOrders() {
   const rows = await fetch(BASE + "/admin/api/orders", { credentials: "same-origin" }).then((r) => r.json());
   document.querySelector("#orders-table tbody").innerHTML = rows.map((o) =>
     "<tr><td>" + esc(o.id) + "</td><td>" + esc(o.username || "-") + "</td><td>" + esc(zh(o.status)) + "</td><td>" + esc(o.vehicleId) + "</td><td>" + esc(o.pickupVertiport.name) +
-    "</td><td>" + esc(o.destination.name) + '</td><td><button class="btn" onclick="cancelOrder(\'' + o.id + '\')">强制取消</button></td></tr>'
+    "</td><td>" + esc(o.destination.name) + '</td><td><button class="btn danger" onclick="cancelOrder(\'' + o.id + '\')">强制取消</button></td></tr>'
   ).join("");
 }
 async function cancelOrder(id) { if (confirm("强制取消 " + id + "?")) { await call("POST", "/orders/" + id + "/cancel"); loadOrders(); } }

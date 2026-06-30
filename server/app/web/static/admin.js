@@ -15,8 +15,9 @@ async function loadVehicles() {
   const rows = await crud("GET", "/vehicles");
   document.querySelector("#vehicles-table tbody").innerHTML = rows.map((v) =>
     "<tr><td>" + esc(v.id) + "</td><td>" + esc(v.name) + "</td><td>" + esc(zh(v.status)) + "</td><td>" + v.batteryPercent +
-    '%</td><td>' + esc(v.currentVertiportId || "-") + '</td><td><button class="btn" onclick="delVehicle(\'' + v.id + '\')">删除</button> ' +
-    '<button class="btn" onclick="toggleMaint(\'' + v.id + '\',\'' + v.status + '\')">维护切换</button></td></tr>'
+    '%</td><td>' + esc(v.currentVertiportId || "-") + '</td><td>' +
+    '<button class="btn" onclick="toggleMaint(\'' + v.id + '\',\'' + v.status + '\')">维护切换</button> ' +
+    '<button class="btn danger" onclick="delVehicle(\'' + v.id + '\')">删除</button></td></tr>'
   ).join("");
 }
 async function createVehicle() {
@@ -30,7 +31,7 @@ async function loadVertiports() {
   const rows = await crud("GET", "/vertiports");
   document.querySelector("#vertiports-table tbody").innerHTML = rows.map((vp) =>
     "<tr><td>" + esc(vp.id) + "</td><td>" + esc(vp.name) + '</td><td><span class="tag ' + (vp.occupied ? "occupied" : "empty") + '">' +
-    (vp.occupied ? "有(" + vp.vehicleCount + ")" : "无") + '</span></td><td><button class="btn" onclick="delVertiport(\'' + vp.id + '\')">删除</button></td></tr>'
+    (vp.occupied ? "有(" + vp.vehicleCount + ")" : "无") + '</span></td><td><button class="btn danger" onclick="delVertiport(\'' + vp.id + '\')">删除</button></td></tr>'
   ).join("");
 }
 async function createVertiport() {
