@@ -39,6 +39,7 @@ class Order(Base):
     vehicle_origin_lng: Mapped[float] = mapped_column(Float)
     destination_id: Mapped[str] = mapped_column(ForeignKey("vertiports.id"))
     vehicle_id: Mapped[str] = mapped_column(ForeignKey("vehicles.id"))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     status: Mapped[str] = mapped_column(String)
     amount_cents: Mapped[int] = mapped_column(Integer)
     distance_km: Mapped[float] = mapped_column(Float)
@@ -55,5 +56,14 @@ class Order(Base):
 class AdminUser(Base):
     __tablename__ = "admin_users"
     username: Mapped[str] = mapped_column(String, primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class User(Base):
+    """App 端注册用户（与管理端 AdminUser 区分）。"""
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String)
     created_at: Mapped[int] = mapped_column(Integer, default=0)

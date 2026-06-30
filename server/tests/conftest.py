@@ -41,4 +41,10 @@ def auth_client(client):
         follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
+    # 管理端测试有时也会调用 mobile 接口（下单/占用），这些现在需要登录态；
+    # 注册一个 App 用户并注入 Bearer（管理端会话接口会忽略该头，互不影响）。
+    token = client.post(
+        "/auth/register", json={"username": "rider", "password": "ridepass"}
+    ).json()["token"]
+    client.headers["Authorization"] = f"Bearer {token}"
     return client

@@ -2,18 +2,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import hash_password, verify_password
 from app.database import get_session
 from app.geo import haversine_km
 from app.mappers import order_to_dto, vehicle_to_dto, vertiport_to_dto
-from app.models import Order, Vehicle, Vertiport
+from app.mobile_auth import get_current_user, issue_token
+from app.models import Order, User, Vehicle, Vertiport
 from app.schemas import (
+    AuthResponse,
     CreateOrderRequest,
     EstimateRequest,
     EvtolDto,
+    LoginRequest,
     NearbyRequest,
     OccupancyDto,
     OrderDto,
     PriceEstimateDto,
+    RegisterRequest,
     VertiportDto,
 )
 from app.services import (
@@ -24,7 +29,41 @@ from app.services import (
     vehicles_at_vertiport,
 )
 
-router = APIRouter()
+# 开放路由：注册/登录无需登录态
+auth_router = APIRouter(prefix="/auth")
+
+
+@auth_router.post("/register", response_model=AuthResponse)
+def register(req: RegisterRequest, session: Session = Depends(get_session)):
+    username = req.username.strip()
+    if len(username) < 3 or len(req.password) < 6:
+        raise HTTPException(status_code=422, detail="用户名至少 3 位，密码至少 6 位")
+    exists = session.execute(select(User).where(User.username == username)).first()
+    if exists is not None:
+        raise HTTPException(status_code=409, detail="用户名已被占用")
+    user = User(username=username, password_hash=hash_password(req.password), created_at=now_millis())
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return AuthResponse(token=issue_token(user.id), userId=user.id, username=user.username)
+
+
+@auth_router.post("/login", response_model=AuthResponse)
+def login(req: LoginRequest, session: Session = Depends(get_session)):
+    username = req.username.strip()
+    user = session.execute(select(User).where(User.username == username)).scalar_one_or_none()
+    if user is None or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    return AuthResponse(token=issue_token(user.id), userId=user.id, username=user.username)
+
+
+@auth_router.get("/me", response_model=AuthResponse)
+def me(user: User = Depends(get_current_user)):
+    return AuthResponse(token="", userId=user.id, username=user.username)
+
+
+# 受保护路由：以下所有接口都要求登录（未登录禁止查看任何信息）
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/vertiports", response_model=list[VertiportDto])
@@ -77,7 +116,11 @@ def price_estimate(req: EstimateRequest, session: Session = Depends(get_session)
 
 
 @router.post("/orders", response_model=OrderDto)
-def create_order(req: CreateOrderRequest, session: Session = Depends(get_session)):
+def create_order(
+    req: CreateOrderRequest,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     pickup_vp = session.get(Vertiport, req.pickupVertiportId)
     dest_vp = session.get(Vertiport, req.destinationVertiportId)
     if pickup_vp is None or dest_vp is None:
@@ -103,6 +146,7 @@ def create_order(req: CreateOrderRequest, session: Session = Depends(get_session
         vehicle_origin_lng=vehicle.longitude,
         destination_id=dest_vp.id,
         vehicle_id=vehicle.id,
+        user_id=user.id,
         status="RESERVED",
         amount_cents=amount,
         distance_km=dist,
@@ -118,15 +162,24 @@ def create_order(req: CreateOrderRequest, session: Session = Depends(get_session
 
 
 @router.get("/orders", response_model=list[OrderDto])
-def list_orders(session: Session = Depends(get_session)):
-    rows = session.execute(select(Order).order_by(Order.created_at.desc())).scalars().all()
+def list_orders(
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    rows = session.execute(
+        select(Order).where(Order.user_id == user.id).order_by(Order.created_at.desc())
+    ).scalars().all()
     return [_load_order_dto(session, o) for o in rows]
 
 
 @router.get("/orders/{order_id}", response_model=OrderDto)
-def get_order(order_id: str, session: Session = Depends(get_session)):
+def get_order(
+    order_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     order = session.get(Order, order_id)
-    if order is None:
+    if order is None or order.user_id != user.id:
         raise HTTPException(status_code=404, detail="order not found")
     return _load_order_dto(session, order)
 
@@ -135,9 +188,13 @@ CANCELABLE = {"CREATED", "ASSIGNED", "RESERVED", "BOARDING"}
 
 
 @router.post("/orders/{order_id}/board", response_model=OrderDto)
-def board(order_id: str, session: Session = Depends(get_session)):
+def board(
+    order_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     order = session.get(Order, order_id)
-    if order is None:
+    if order is None or order.user_id != user.id:
         raise HTTPException(status_code=404, detail="order not found")
     if order.status != "BOARDING":
         raise HTTPException(status_code=409, detail="order not in BOARDING")
@@ -155,9 +212,13 @@ def board(order_id: str, session: Session = Depends(get_session)):
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderDto)
-def cancel(order_id: str, session: Session = Depends(get_session)):
+def cancel(
+    order_id: str,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     order = session.get(Order, order_id)
-    if order is None:
+    if order is None or order.user_id != user.id:
         raise HTTPException(status_code=404, detail="order not found")
     if order.status not in CANCELABLE:
         raise HTTPException(status_code=409, detail="order not cancelable")

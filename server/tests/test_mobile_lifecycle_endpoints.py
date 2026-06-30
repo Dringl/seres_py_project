@@ -1,5 +1,13 @@
+import pytest
+
 import app.database as database
 from app.simulation import tick
+
+
+@pytest.fixture(autouse=True)
+def _mobile_auth(client):
+    token = client.post("/auth/register", json={"username": "rider", "password": "ridepass"}).json()["token"]
+    client.headers["Authorization"] = f"Bearer {token}"
 
 
 def _create(client):

@@ -1,3 +1,12 @@
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _mobile_auth(client):
+    token = client.post("/auth/register", json={"username": "rider", "password": "ridepass"}).json()["token"]
+    client.headers["Authorization"] = f"Bearer {token}"
+
+
 def test_get_vertiports(client):
     resp = client.get("/vertiports")
     assert resp.status_code == 200

@@ -2,14 +2,14 @@ import random
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_session
 from app.geo import haversine_km
 from app.mappers import order_to_dto
-from app.models import Order, Vehicle, Vertiport
+from app.models import Order, User, Vehicle, Vertiport
 from app.routers.admin_auth import require_admin
 from app.services import now_millis, vehicles_at_vertiport
 
@@ -33,7 +33,10 @@ def vehicle_admin_dict(v: Vehicle) -> dict:
 def order_admin_dict(session: Session, o: Order) -> dict:
     pickup_vp = session.get(Vertiport, o.pickup_vertiport_id)
     dest_vp = session.get(Vertiport, o.destination_id)
-    return order_to_dto(o, pickup_vp, dest_vp).model_dump()
+    d = order_to_dto(o, pickup_vp, dest_vp).model_dump()
+    user = session.get(User, o.user_id) if o.user_id else None
+    d["username"] = user.username if user else None
+    return d
 
 
 @router.get("/overview")
@@ -99,6 +102,18 @@ def list_vertiports(session: Session = Depends(get_session)) -> list[dict]:
 def list_orders(session: Session = Depends(get_session)) -> list[dict]:
     rows = session.execute(select(Order).order_by(Order.created_at.desc())).scalars().all()
     return [order_admin_dict(session, o) for o in rows]
+
+
+@router.get("/users")
+def list_users(session: Session = Depends(get_session)) -> list[dict]:
+    rows = session.execute(select(User).order_by(User.created_at.desc())).scalars().all()
+    out = []
+    for u in rows:
+        cnt = session.execute(
+            select(func.count()).select_from(Order).where(Order.user_id == u.id)
+        ).scalar_one()
+        out.append({"id": u.id, "username": u.username, "createdAt": u.created_at, "orderCount": cnt})
+    return out
 
 
 class VehicleCreate(BaseModel):

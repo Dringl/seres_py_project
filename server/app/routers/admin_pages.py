@@ -53,3 +53,10 @@ def orders_page(request: Request):
     if not current_admin(request):
         return _login_redirect(request)
     return templates.TemplateResponse(request, "orders.html", {"admin": current_admin(request)})
+
+
+@router.get("/admin/users", response_class=HTMLResponse, name="admin_users")
+def users_page(request: Request):
+    if not current_admin(request):
+        return _login_redirect(request)
+    return templates.TemplateResponse(request, "users.html", {"admin": current_admin(request)})

@@ -23,6 +23,6 @@ def test_vertiport_dto_shape():
 def test_order_dto_has_full_fields():
     fields = set(OrderDto.model_fields.keys())
     assert fields == {
-        "id", "vehicleId", "status", "price", "createdAt", "updatedAt",
+        "id", "vehicleId", "userId", "status", "price", "createdAt", "updatedAt",
         "pickup", "pickupVertiport", "vehicleOrigin", "destination",
     }

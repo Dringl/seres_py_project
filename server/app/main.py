@@ -27,6 +27,7 @@ app = FastAPI(
 )
 app.add_middleware(SessionMiddleware, secret_key=_settings.secret_key, same_site="lax", https_only=not _TESTING)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(mobile.auth_router)
 app.include_router(mobile.router)
 app.include_router(admin_auth.router)
 app.include_router(admin_api.router)

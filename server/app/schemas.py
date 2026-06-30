@@ -28,9 +28,26 @@ class PriceEstimateDto(BaseModel):
     cancellationFeeCents: int = 0
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    userId: int
+    username: str
+
+
 class OrderDto(BaseModel):
     id: str
     vehicleId: str
+    userId: int | None = None
     status: str
     price: PriceEstimateDto
     createdAt: int

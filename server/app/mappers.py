@@ -31,6 +31,7 @@ def order_to_dto(order: Order, pickup_vp: Vertiport, dest_vp: Vertiport) -> Orde
     return OrderDto(
         id=order.id,
         vehicleId=order.vehicle_id,
+        userId=order.user_id,
         status=order.status,
         price=PriceEstimateDto(
             amountCents=order.amount_cents,
