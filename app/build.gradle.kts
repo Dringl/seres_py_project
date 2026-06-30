@@ -119,3 +119,8 @@ dependencies {
 kapt {
     correctErrorTypes = true
 }
+
+// Android application 模块没有 JVM(java) 插件的 testClasses 任务；
+// Android Studio 的 "Build Project"(Ctrl+F9) 委托 Gradle 时会调用 :app:testClasses，
+// 注册一个空任务避免 "task 'testClasses' not found"。
+tasks.register("testClasses")
