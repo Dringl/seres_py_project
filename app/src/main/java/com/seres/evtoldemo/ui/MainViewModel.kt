@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.seres.evtoldemo.BuildConfig
 import com.seres.evtoldemo.R
+import com.seres.evtoldemo.data.auth.AuthStore
 import com.seres.evtoldemo.data.navigation.DrivingRouteEngine
 import com.seres.evtoldemo.data.model.GeoPoint
 import com.seres.evtoldemo.data.model.Order
@@ -44,7 +45,8 @@ class MainViewModel @Inject constructor(
     private val cancelOrderUseCase: CancelOrderUseCase,
     private val getOrderHistoryUseCase: GetOrderHistoryUseCase,
     private val drivingRouteEngine: DrivingRouteEngine,
-    private val locationTracker: LocationTracker
+    private val locationTracker: LocationTracker,
+    private val authStore: AuthStore
 ) : ViewModel() {
 
     private val tag = "MainViewModel"
@@ -359,8 +361,8 @@ class MainViewModel @Inject constructor(
 
     private fun loadInitialData() {
         viewModelScope.launch {
-            val allVertiports = getVertiportsUseCase()
-            val history = getOrderHistoryUseCase()
+            val allVertiports = try { getVertiportsUseCase() } catch (e: Exception) { emptyList() }
+            val history = try { getOrderHistoryUseCase() } catch (e: Exception) { emptyList() }
             // 断点续单：若该用户有进行中的订单，恢复行程并继续观察
             val resumable = history.firstOrNull { it.status in RESUMABLE_STATUSES }
             _uiState.update {
@@ -475,7 +477,8 @@ class MainViewModel @Inject constructor(
         }
         fleetPollingJob = viewModelScope.launch {
             while (isActive) {
-                if (_uiState.value.currentLocation != null) {
+                // 已登录且有定位才轮询；登出后 token 为空，停止空轮询(避免无谓 401)
+                if (authStore.token != null && _uiState.value.currentLocation != null) {
                     reloadNearbyVehicles()
                 }
                 delay(250)
@@ -485,7 +488,13 @@ class MainViewModel @Inject constructor(
 
     private suspend fun reloadNearbyVehicles() {
         val location = _uiState.value.currentLocation ?: return
-        val vehicles = getNearbyVehiclesUseCase(location)
+        // 常驻轮询：任何网络错误(502/401/超时等)都吞掉，绝不让异常冒泡崩溃 App
+        val vehicles = try {
+            getNearbyVehiclesUseCase(location)
+        } catch (e: Exception) {
+            debugError("reloadNearbyVehicles failed", e)
+            return
+        }
         _uiState.update { state ->
             val activeVehicleLocation = state.activeOrder?.let { activeOrder ->
                 vehicles.firstOrNull { it.id == activeOrder.vehicleId }?.location
@@ -514,7 +523,12 @@ class MainViewModel @Inject constructor(
     }
 
     private suspend fun reloadHistory() {
-        val history = getOrderHistoryUseCase()
+        val history = try {
+            getOrderHistoryUseCase()
+        } catch (e: Exception) {
+            debugError("reloadHistory failed", e)
+            return
+        }
         _uiState.update { it.copy(orderHistory = history) }
     }
 

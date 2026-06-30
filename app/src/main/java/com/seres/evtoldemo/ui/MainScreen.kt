@@ -103,6 +103,7 @@ import com.seres.evtoldemo.ui.auth.AuthViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -1553,7 +1554,7 @@ private fun AMap.drawEntityMarkers(
             freshBearing != null -> toAMapRotateAngle(freshBearing)
             else -> vehicleAnimator.shownAngle[vehicle.id] ?: 0f
         }
-        vehicleAnimator.setTarget(vehicle.id, vehiclePoint, targetAngle, animNow, 320f)
+        vehicleAnimator.setTarget(vehicle.id, vehiclePoint, targetAngle, animNow)
         val key = "vehicle:${vehicle.id}"
         visibleMarkerKeys += key
         val markerAnchor = resolveVehicleAnchor(isFlying)
@@ -1598,7 +1599,7 @@ private fun AMap.drawEntityMarkers(
                 else -> vehicleAnimator.shownAngle[activeOrder.vehicleId] ?: 0f
             }
             renderedVehicleIds += activeOrder.vehicleId
-            vehicleAnimator.setTarget(activeOrder.vehicleId, anchoredPoint, targetAngle, animNow, 320f)
+            vehicleAnimator.setTarget(activeOrder.vehicleId, anchoredPoint, targetAngle, animNow)
             val key = "vehicle:${activeOrder.vehicleId}"
             visibleMarkerKeys += key
             val markerAnchor = resolveVehicleAnchor(isFlying)
@@ -1781,13 +1782,34 @@ private class VehicleMarkerAnimator {
     val shownPos = mutableMapOf<String, GeoPoint>()   // 当前实际显示位置
     val shownAngle = mutableMapOf<String, Float>()    // 当前实际显示角度(AMap rotateAngle)
 
-    /** 从当前显示位置/角度匀速滑/转向新目标；首次出现则直接落到目标(不从原点滑入)。 */
-    fun setTarget(id: String, targetPos: GeoPoint, targetAngle: Float, now: Long, durationMs: Float) {
+    // 记录"目标真正变化"的上一次，用于自适应动画时长 + 去抖
+    private val lastTargetPos = mutableMapOf<String, GeoPoint>()
+    private val lastTargetAngle = mutableMapOf<String, Float>()
+    private val lastChangeTime = mutableMapOf<String, Long>()
+
+    /**
+     * 注册新目标。动画时长取"目标上次变化到本次"的实测间隔（即真实轮询间隔，含网络往返），
+     * 略放大 1.25× 以保证下一采样到来前一直在移动 → 连续不顿挫。
+     * 频繁重组导致的重复刷新（目标没变）会被忽略，避免间隔测量被打乱。
+     */
+    fun setTarget(id: String, targetPos: GeoPoint, targetAngle: Float, now: Long) {
+        val prevPos = lastTargetPos[id]
+        val prevAngle = lastTargetAngle[id]
+        val moved = prevPos == null || prevPos.distanceTo(targetPos) > 0.00003  // 约 3 米
+        val turned = prevAngle == null || abs(((targetAngle - prevAngle + 540f) % 360f) - 180f) > 1.5f
+        if (!moved && !turned) return
+
+        val last = lastChangeTime[id]
+        val dur = if (last != null) ((now - last) * 1.25f).coerceIn(280f, 2000f) else 600f
+        lastChangeTime[id] = now
+        lastTargetPos[id] = targetPos
+        lastTargetAngle[id] = targetAngle
+
         val sp = shownPos[id] ?: targetPos
         val sa = shownAngle[id] ?: targetAngle
         shownPos[id] = sp
         shownAngle[id] = sa
-        anims[id] = Anim(sp, targetPos, sa, targetAngle, now, durationMs)
+        anims[id] = Anim(sp, targetPos, sa, targetAngle, now, dur)
     }
 
     fun activeIds(): List<String> = anims.keys.toList()
@@ -1798,6 +1820,9 @@ private class VehicleMarkerAnimator {
             anims.remove(it)
             shownPos.remove(it)
             shownAngle.remove(it)
+            lastTargetPos.remove(it)
+            lastTargetAngle.remove(it)
+            lastChangeTime.remove(it)
         }
     }
 }
