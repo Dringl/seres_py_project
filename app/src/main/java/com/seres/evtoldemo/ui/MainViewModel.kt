@@ -66,6 +66,7 @@ class MainViewModel @Inject constructor(
 
     private var observeOrderJob: Job? = null
     private var vehiclePollingJob: Job? = null
+    private var fleetPollingJob: Job? = null
     private var tripResetJob: Job? = null
 
     init {
@@ -451,34 +452,19 @@ class MainViewModel @Inject constructor(
     }
 
     private fun updateVehiclePollingByOrderState(order: Order?) {
-        val running = order?.status in setOf(
-            OrderStatus.RESERVED,
-            OrderStatus.BOARDING,
-            OrderStatus.IN_FLIGHT,
-            OrderStatus.RETURNING
-        )
-        if (!running) {
-            vehiclePollingJob?.cancel()
-            vehiclePollingJob = null
+        // 机队位置改为常驻轮询：无论本机有无进行中订单，都持续刷新附近飞行器，
+        // 这样任意设备都能实时看到其他设备订单的飞行器在移动。
+        ensureFleetPolling()
+    }
+
+    private fun ensureFleetPolling() {
+        if (fleetPollingJob?.isActive == true) {
             return
         }
-
-        if (vehiclePollingJob?.isActive == true) {
-            return
-        }
-
-        vehiclePollingJob = viewModelScope.launch {
+        fleetPollingJob = viewModelScope.launch {
             while (isActive) {
-                reloadNearbyVehicles()
-                val current = _uiState.value.activeOrder
-                if (current == null || current.status !in setOf(
-                        OrderStatus.RESERVED,
-                        OrderStatus.BOARDING,
-                        OrderStatus.IN_FLIGHT,
-                        OrderStatus.RETURNING
-                    )
-                ) {
-                    break
+                if (_uiState.value.currentLocation != null) {
+                    reloadNearbyVehicles()
                 }
                 delay(250)
             }

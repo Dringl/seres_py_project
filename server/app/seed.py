@@ -20,11 +20,11 @@ VERTIPORTS = [
 
 # location 与 vp003 / vp001 / vp006 对应，初始停靠在该坪
 VEHICLES = [
-    {"id": "ev001", "name": "Eagle-01", "latitude": 29.5845, "longitude": 106.5332,
+    {"id": "ev001", "name": "雄鹰-01", "latitude": 29.5845, "longitude": 106.5332,
      "battery_percent": 88, "current_vertiport_id": "vp003"},
-    {"id": "ev002", "name": "Eagle-02", "latitude": 29.5792, "longitude": 106.5758,
+    {"id": "ev002", "name": "雄鹰-02", "latitude": 29.5792, "longitude": 106.5758,
      "battery_percent": 74, "current_vertiport_id": "vp001"},
-    {"id": "ev003", "name": "Eagle-03", "latitude": 29.7211, "longitude": 106.6439,
+    {"id": "ev003", "name": "雄鹰-03", "latitude": 29.7211, "longitude": 106.6439,
      "battery_percent": 81, "current_vertiport_id": "vp006"},
 ]
 

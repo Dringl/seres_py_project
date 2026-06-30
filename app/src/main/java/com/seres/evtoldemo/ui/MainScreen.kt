@@ -858,6 +858,8 @@ private fun MapHeroSection(
     var smoothingTargetPoint by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
     var smoothedActiveVehicleHeading by remember(mapView) { mutableStateOf<Float?>(null) }
     var smoothingTargetHeading by remember(mapView) { mutableStateOf<Float?>(null) }
+    // 非活动飞行器的航向：id -> (上次位置, 上次航向)，按位移计算朝向
+    val vehicleHeadingCache = remember(mapView) { mutableMapOf<String, Pair<GeoPoint, Float>>() }
 
     LaunchedEffect(state.activeVehicleLocation, state.activeOrder?.status) {
         val target = state.activeVehicleLocation
@@ -1015,7 +1017,8 @@ private fun MapHeroSection(
                     activeVehicleMarkerIcon = activeVehicleMarkerIcon,
                     renderCache = renderCache,
                     smoothedActiveVehiclePoint = smoothedActiveVehiclePoint,
-                    smoothedActiveVehicleHeading = smoothedActiveVehicleHeading
+                    smoothedActiveVehicleHeading = smoothedActiveVehicleHeading,
+                    vehicleHeadingCache = vehicleHeadingCache
                 )
                 aMap.renderRoutePolylines(
                     state = state,
@@ -1471,7 +1474,8 @@ private fun AMap.drawEntityMarkers(
     activeVehicleMarkerIcon: BitmapDescriptor,
     renderCache: MapRenderCache,
     smoothedActiveVehiclePoint: GeoPoint?,
-    smoothedActiveVehicleHeading: Float?
+    smoothedActiveVehicleHeading: Float?,
+    vehicleHeadingCache: MutableMap<String, Pair<GeoPoint, Float>>
 ) {
     val allVertiports = state.allVertiports.ifEmpty { state.vertiports }
     val activeOrder = state.activeOrder
@@ -1555,7 +1559,18 @@ private fun AMap.drawEntityMarkers(
         } else {
             vehicleStatusLabel(context, vehicle.status)
         }
-        val heading = if (isActiveVehicle) smoothedActiveVehicleHeading ?: resolveActiveVehicleHeading(state, vehiclePoint) else null
+        val heading = if (isActiveVehicle) {
+            smoothedActiveVehicleHeading ?: resolveActiveVehicleHeading(state, vehiclePoint)
+        } else {
+            val prevH = vehicleHeadingCache[vehicle.id]
+            val computed = if (prevH != null && prevH.first.distanceTo(vehiclePoint) > 0.0003) {
+                bearingDegrees(prevH.first, vehiclePoint)
+            } else {
+                prevH?.second
+            }
+            vehicleHeadingCache[vehicle.id] = vehiclePoint to (computed ?: prevH?.second ?: 0f)
+            computed
+        }
         val key = "vehicle:${vehicle.id}"
         visibleMarkerKeys += key
         val markerAnchor = resolveVehicleAnchor(isFlying)
