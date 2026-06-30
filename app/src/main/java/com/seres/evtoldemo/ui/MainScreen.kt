@@ -56,7 +56,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -855,100 +854,27 @@ private fun MapHeroSection(
     var initialCameraApplied by remember(mapView) { mutableStateOf(false) }
     var lastRouteFocusKey by remember(mapView) { mutableStateOf("") }
     val renderCache = remember(mapView) { MapRenderCache() }
-    var smoothedActiveVehiclePoint by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
-    var smoothingTargetPoint by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
-    var smoothedActiveVehicleHeading by remember(mapView) { mutableStateOf<Float?>(null) }
-    var smoothingTargetHeading by remember(mapView) { mutableStateOf<Float?>(null) }
-    // 活动飞行器线性插值：本段动画起点与起始时间（基于时间匀速移动，避免一顿一顿）
-    var activeAnimStart by remember(mapView) { mutableStateOf<GeoPoint?>(null) }
-    var activeAnimStartTime by remember(mapView) { mutableStateOf(0L) }
-    // 所有飞行器（含他人正在飞的）线性插值显示位置与航向，让非活动飞行器也连续移动
-    val smoothedVehiclePoints = remember(mapView) { mutableStateMapOf<String, GeoPoint>() }
-    val smoothedVehicleHeadings = remember(mapView) { mutableStateMapOf<String, Float>() }
-    // id -> (本段起点, 本段目标, 起始时间ms)
-    val vehicleAnims = remember(mapView) { mutableMapOf<String, Triple<GeoPoint, GeoPoint, Long>>() }
+    // 飞行器 marker 动画器：60fps 直接驱动 marker 的位置/朝向，绕开 Compose 重组
+    // （之前用 Compose 状态在 60fps 触发重组+全量重绘，会打满主线程导致地图掉到约 2fps 卡死）
+    val vehicleAnimator = remember(mapView) { VehicleMarkerAnimator() }
 
-    LaunchedEffect(state.activeVehicleLocation, state.activeOrder?.status) {
-        val target = state.activeVehicleLocation
-        if (target == null) {
-            smoothedActiveVehiclePoint = null
-            smoothingTargetPoint = null
-            smoothedActiveVehicleHeading = null
-            smoothingTargetHeading = null
-            activeAnimStart = null
-            return@LaunchedEffect
-        }
-        val current = smoothedActiveVehiclePoint
-        if (current == null) {
-            smoothedActiveVehiclePoint = target
-            smoothingTargetPoint = target
-            activeAnimStart = target
-            activeAnimStartTime = System.currentTimeMillis()
-            val resolvedHeading = resolveActiveVehicleHeading(state, target)
-            smoothedActiveVehicleHeading = resolvedHeading
-            smoothingTargetHeading = resolvedHeading
-            return@LaunchedEffect
-        }
-        // 新采样点：从当前显示位置匀速线性滑向新目标
-        activeAnimStart = current
-        activeAnimStartTime = System.currentTimeMillis()
-        smoothingTargetPoint = target
-        val resolvedHeading = resolveActiveVehicleHeading(state, target)
-        smoothingTargetHeading = resolvedHeading
-        if (resolvedHeading == null) {
-            smoothedActiveVehicleHeading = null
-        }
-    }
-
-    // 非活动飞行器：每次轮询刷新后，为每台设置新的线性动画目标
-    LaunchedEffect(state.nearbyVehicles) {
-        val nowMs = System.currentTimeMillis()
-        val seen = HashSet<String>()
-        state.nearbyVehicles.forEach { v ->
-            seen += v.id
-            val shown = smoothedVehiclePoints[v.id]
-            if (shown == null) {
-                smoothedVehiclePoints[v.id] = v.location
-                vehicleAnims[v.id] = Triple(v.location, v.location, nowMs)
-            } else {
-                vehicleAnims[v.id] = Triple(shown, v.location, nowMs)
-                if (shown.distanceTo(v.location) > 0.0003) {
-                    smoothedVehicleHeadings[v.id] = bearingDegrees(shown, v.location)
-                }
-            }
-        }
-        (smoothedVehiclePoints.keys - seen).toList().forEach {
-            smoothedVehiclePoints.remove(it)
-            smoothedVehicleHeadings.remove(it)
-            vehicleAnims.remove(it)
-        }
-    }
-
+    // 60fps 动画：直接更新已存在 marker 的位置与朝向，不写 Compose 状态、不触发重组。
+    // 目标由 drawEntityMarkers 在每次数据刷新(约 0.25s)时通过 vehicleAnimator.setTarget 注册。
     LaunchedEffect(mapView) {
-        val durationMs = 300f  // 略大于 0.25s 轮询周期，保证始终在移动、不停顿
         while (true) {
             val nowMs = System.currentTimeMillis()
-            // 活动飞行器：基于时间的匀速线性插值（从本段起点滑向目标）
-            val target = smoothingTargetPoint
-            val start = activeAnimStart
-            if (target != null && start != null) {
-                val frac = ((nowMs - activeAnimStartTime).toFloat() / durationMs).coerceIn(0f, 1f)
-                smoothedActiveVehiclePoint = interpolateGeoPoint(start, target, frac.toDouble())
-            }
-            val currentHeading = smoothedActiveVehicleHeading
-            val targetHeading = smoothingTargetHeading
-            if (currentHeading != null && targetHeading != null) {
-                smoothedActiveVehicleHeading = interpolateHeading(currentHeading, targetHeading, 0.22f)
-            } else if (targetHeading == null) {
-                smoothedActiveVehicleHeading = null
-            }
-            // 其余所有飞行器：同样基于时间匀速线性插值
-            if (vehicleAnims.isNotEmpty()) {
-                vehicleAnims.entries.toList().forEach { (id, anim) ->
-                    val (aStart, aTarget, t0) = anim
-                    val frac = ((nowMs - t0).toFloat() / durationMs).coerceIn(0f, 1f)
-                    smoothedVehiclePoints[id] = interpolateGeoPoint(aStart, aTarget, frac.toDouble())
+            vehicleAnimator.activeIds().forEach { id ->
+                val a = vehicleAnimator.anims[id] ?: return@forEach
+                val frac = ((nowMs - a.startTime).toFloat() / a.durationMs).coerceIn(0f, 1f)
+                val pos = interpolateGeoPoint(a.startPos, a.targetPos, frac.toDouble())
+                val ang = interpolateHeading(a.startAngle, a.targetAngle, frac)
+                vehicleAnimator.shownPos[id] = pos
+                vehicleAnimator.shownAngle[id] = ang
+                renderCache.markers["vehicle:$id"]?.let { m ->
+                    m.position = pos.toLatLng()
+                    m.rotateAngle = ang
                 }
+                if (frac >= 1f) vehicleAnimator.anims.remove(id)  // 本段到达，停止直到下次 setTarget
             }
             delay(16)
         }
@@ -1064,10 +990,7 @@ private fun MapHeroSection(
                     vehicleMarkerIcon = vehicleMarkerIcon,
                     activeVehicleMarkerIcon = activeVehicleMarkerIcon,
                     renderCache = renderCache,
-                    smoothedActiveVehiclePoint = smoothedActiveVehiclePoint,
-                    smoothedActiveVehicleHeading = smoothedActiveVehicleHeading,
-                    smoothedVehiclePoints = smoothedVehiclePoints,
-                    smoothedVehicleHeadings = smoothedVehicleHeadings
+                    vehicleAnimator = vehicleAnimator
                 )
                 aMap.renderRoutePolylines(
                     state = state,
@@ -1522,15 +1445,13 @@ private fun AMap.drawEntityMarkers(
     vehicleMarkerIcon: BitmapDescriptor,
     activeVehicleMarkerIcon: BitmapDescriptor,
     renderCache: MapRenderCache,
-    smoothedActiveVehiclePoint: GeoPoint?,
-    smoothedActiveVehicleHeading: Float?,
-    smoothedVehiclePoints: Map<String, GeoPoint>,
-    smoothedVehicleHeadings: Map<String, Float>
+    vehicleAnimator: VehicleMarkerAnimator
 ) {
     val allVertiports = state.allVertiports.ifEmpty { state.vertiports }
     val activeOrder = state.activeOrder
     val activeVehicleId = activeOrder?.vehicleId
     val visibleMarkerKeys = mutableSetOf<String>()
+    val animNow = System.currentTimeMillis()
 
     state.currentLocation?.let { current ->
         visibleMarkerKeys += "user"
@@ -1585,35 +1506,30 @@ private fun AMap.drawEntityMarkers(
             return@forEach
         }
         renderedVehicleIds += vehicle.id
-        val rawVehiclePoint = if (isActiveVehicle) {
-            smoothedActiveVehiclePoint ?: state.activeVehicleLocation ?: vehicle.location
-        } else {
-            smoothedVehiclePoints[vehicle.id] ?: vehicle.location
-        }
-        val isFlying = if (isActiveVehicle && activeOrder != null) {
-            activeOrder.status == OrderStatus.IN_FLIGHT
-        } else {
-            vehicle.status == VehicleStatus.IN_FLIGHT
-        }
+        // 走到这里说明无活动订单(有活动订单的本机已在上面 return)，按普通飞行器处理
+        val isFlying = vehicle.status == VehicleStatus.IN_FLIGHT
         val vehiclePoint = resolveVehicleDisplayPoint(
-            rawPoint = rawVehiclePoint,
+            rawPoint = vehicle.location,
             isFlying = isFlying,
-            isActiveVehicle = isActiveVehicle,
+            isActiveVehicle = false,
             destination = state.selectedDestination,
             allVertiports = allVertiports,
-            orderStatus = if (isActiveVehicle) activeOrder?.status else null,
-            pickupVertiport = if (isActiveVehicle) activeOrder?.pickupVertiport ?: state.pickupVertiport else null
+            orderStatus = null,
+            pickupVertiport = null
         )
-        val statusText = if (isActiveVehicle && activeOrder != null) {
-            statusLabel(context, activeOrder.status)
-        } else {
-            vehicleStatusLabel(context, vehicle.status)
+        val statusText = vehicleStatusLabel(context, vehicle.status)
+        // 仅在 RESERVED/IN_FLIGHT(移动态)按行进方向旋转；停靠时目标角度归零=自动摆正
+        val moving = vehicle.status == VehicleStatus.RESERVED || vehicle.status == VehicleStatus.IN_FLIGHT
+        val prevShown = vehicleAnimator.shownPos[vehicle.id]
+        val freshBearing = if (moving && prevShown != null && prevShown.distanceTo(vehiclePoint) > 0.0003) {
+            bearingDegrees(prevShown, vehiclePoint)
+        } else null
+        val targetAngle = when {
+            !moving -> 0f
+            freshBearing != null -> toAMapRotateAngle(freshBearing)
+            else -> vehicleAnimator.shownAngle[vehicle.id] ?: 0f
         }
-        val heading = if (isActiveVehicle) {
-            smoothedActiveVehicleHeading ?: resolveActiveVehicleHeading(state, vehiclePoint)
-        } else {
-            smoothedVehicleHeadings[vehicle.id]
-        }
+        vehicleAnimator.setTarget(vehicle.id, vehiclePoint, targetAngle, animNow, 320f)
         val key = "vehicle:${vehicle.id}"
         visibleMarkerKeys += key
         val markerAnchor = resolveVehicleAnchor(isFlying)
@@ -1621,25 +1537,23 @@ private fun AMap.drawEntityMarkers(
             cache = renderCache.markers,
             key = key,
             options = MarkerOptions()
-                .position(vehiclePoint.toLatLng())
+                .position((vehicleAnimator.shownPos[vehicle.id] ?: vehiclePoint).toLatLng())
                 .title(vehicle.name)
                 .snippet(context.getString(R.string.vehicle_status_battery_format, statusText, vehicle.batteryPercent))
                 .icon(if (isFlying) activeVehicleMarkerIcon else vehicleMarkerIcon)
                 .anchor(markerAnchor.first, markerAnchor.second)
                 .setFlat(isFlying)
-                .zIndex(if (isActiveVehicle) 120f else 96f),
-            heading = heading,
-            flat = isFlying
+                .zIndex(96f),
+            flat = isFlying,
+            animated = true
         )
     }
 
     if (activeOrder != null) {
-        val activeVehiclePoint = smoothedActiveVehiclePoint
-            ?: state.activeVehicleLocation
+        val activeVehiclePoint = state.activeVehicleLocation
             ?: state.nearbyVehicles.firstOrNull { it.id == activeOrder.vehicleId }?.location
         if (activeVehiclePoint != null) {
             val isFlying = activeOrder.status == OrderStatus.IN_FLIGHT
-            val heading = smoothedActiveVehicleHeading ?: resolveActiveVehicleHeading(state, activeVehiclePoint)
             val anchoredPoint = resolveVehicleDisplayPoint(
                 rawPoint = activeVehiclePoint,
                 isFlying = isFlying,
@@ -1649,6 +1563,18 @@ private fun AMap.drawEntityMarkers(
                 orderStatus = activeOrder.status,
                 pickupVertiport = activeOrder.pickupVertiport
             )
+            // 移动态(去接客/飞行/返航)朝目标方向；停靠/登机时归零=自动摆正
+            val moving = activeOrder.status == OrderStatus.RESERVED ||
+                activeOrder.status == OrderStatus.IN_FLIGHT ||
+                activeOrder.status == OrderStatus.RETURNING
+            val freshBearing = if (moving) resolveActiveVehicleHeading(state, anchoredPoint) else null
+            val targetAngle = when {
+                !moving -> 0f
+                freshBearing != null -> toAMapRotateAngle(freshBearing)
+                else -> vehicleAnimator.shownAngle[activeOrder.vehicleId] ?: 0f
+            }
+            renderedVehicleIds += activeOrder.vehicleId
+            vehicleAnimator.setTarget(activeOrder.vehicleId, anchoredPoint, targetAngle, animNow, 320f)
             val key = "vehicle:${activeOrder.vehicleId}"
             visibleMarkerKeys += key
             val markerAnchor = resolveVehicleAnchor(isFlying)
@@ -1656,15 +1582,15 @@ private fun AMap.drawEntityMarkers(
                 cache = renderCache.markers,
                 key = key,
                 options = MarkerOptions()
-                    .position(anchoredPoint.toLatLng())
+                    .position((vehicleAnimator.shownPos[activeOrder.vehicleId] ?: anchoredPoint).toLatLng())
                     .title(activeOrder.vehicleId)
                     .snippet(context.getString(R.string.marker_vehicle_track))
                     .icon(if (isFlying) activeVehicleMarkerIcon else vehicleMarkerIcon)
                     .anchor(markerAnchor.first, markerAnchor.second)
                     .setFlat(isFlying)
                     .zIndex(140f),
-                heading = heading,
-                flat = isFlying
+                flat = isFlying,
+                animated = true
             )
         }
     }
@@ -1675,6 +1601,7 @@ private fun AMap.drawEntityMarkers(
         .forEach { key ->
             renderCache.markers.remove(key)?.remove()
         }
+    vehicleAnimator.retain(renderedVehicleIds)  // 丢弃已消失飞行器的动画状态
 }
 
 private fun AMap.renderRoutePolylines(
@@ -1757,22 +1684,30 @@ private fun AMap.upsertMarker(
     key: String,
     options: MarkerOptions,
     heading: Float? = null,
-    flat: Boolean = false
+    flat: Boolean = false,
+    animated: Boolean = false
 ) {
     val marker = cache[key]
     if (marker == null) {
-        cache[key] = addMarker(options).also { it.`object` = key }
+        cache[key] = addMarker(options).also {
+            it.`object` = key
+            it.isFlat = flat
+            if (!animated) heading?.let { h -> it.rotateAngle = toAMapRotateAngle(h) }
+        }
         return
     }
     marker.`object` = key
-    marker.position = options.position
+    // animated=true 时位置与朝向由 VehicleMarkerAnimator 直接驱动，这里不覆盖，避免与动画相互打架
+    if (!animated) {
+        marker.position = options.position
+        heading?.let { marker.rotateAngle = toAMapRotateAngle(it) } ?: run { marker.rotateAngle = 0f }
+    }
     marker.title = options.title
     marker.snippet = options.snippet
     marker.setIcon(options.icons.first())
     marker.zIndex = options.zIndex
     marker.setAnchor(options.anchorU, options.anchorV)
     marker.isFlat = flat
-    heading?.let { marker.rotateAngle = toAMapRotateAngle(it) } ?: run { marker.rotateAngle = 0f }
 }
 
 private fun AMap.upsertPolyline(
@@ -1801,6 +1736,46 @@ private fun AMap.upsertPolyline(
 private class MapRenderCache {
     val markers = mutableMapOf<String, Marker>()
     val polylines = mutableMapOf<String, Polyline>()
+}
+
+/**
+ * 飞行器 marker 动画器：在 60fps 循环里基于时间匀速插值位置与朝向，直接写入已存在的 Marker，
+ * 不经过 Compose 重组（避免每帧全量重绘把主线程打满导致地图卡死）。
+ * 每次数据刷新由 drawEntityMarkers 调 setTarget 注册新一段动画目标。
+ */
+private class VehicleMarkerAnimator {
+    class Anim(
+        val startPos: GeoPoint,
+        val targetPos: GeoPoint,
+        val startAngle: Float,
+        val targetAngle: Float,
+        val startTime: Long,
+        val durationMs: Float
+    )
+
+    val anims = mutableMapOf<String, Anim>()
+    val shownPos = mutableMapOf<String, GeoPoint>()   // 当前实际显示位置
+    val shownAngle = mutableMapOf<String, Float>()    // 当前实际显示角度(AMap rotateAngle)
+
+    /** 从当前显示位置/角度匀速滑/转向新目标；首次出现则直接落到目标(不从原点滑入)。 */
+    fun setTarget(id: String, targetPos: GeoPoint, targetAngle: Float, now: Long, durationMs: Float) {
+        val sp = shownPos[id] ?: targetPos
+        val sa = shownAngle[id] ?: targetAngle
+        shownPos[id] = sp
+        shownAngle[id] = sa
+        anims[id] = Anim(sp, targetPos, sa, targetAngle, now, durationMs)
+    }
+
+    fun activeIds(): List<String> = anims.keys.toList()
+
+    /** 丢弃不在 ids 内(已消失)的飞行器动画状态。 */
+    fun retain(ids: Set<String>) {
+        (shownPos.keys - ids).toList().forEach {
+            anims.remove(it)
+            shownPos.remove(it)
+            shownAngle.remove(it)
+        }
+    }
 }
 
 private fun groundedVehicleAnchor(isFlying: Boolean): Pair<Float, Float> {
